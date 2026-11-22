@@ -102,6 +102,123 @@ class _Wire {
   }
 }
 
+/// One data connection (listing or file transfer).
+abstract class _Data {
+  /// Finishes the TLS handshake for encrypted data; no-op for plain.
+  Future<void> start();
+  Stream<List<int>> get input;
+  Future<void> write(List<int> bytes);
+
+  /// Sends end-of-file (close_notify + FIN) after an upload.
+  Future<void> finish();
+  void destroy();
+}
+
+class _PlainData implements _Data {
+  _PlainData(this.s);
+  final Socket s;
+  @override
+  Future<void> start() async {}
+  @override
+  Stream<List<int>> get input => s;
+  @override
+  Future<void> write(List<int> bytes) async {
+    s.add(bytes);
+    await s.flush();
+  }
+
+  @override
+  Future<void> finish() => s.close();
+  @override
+  void destroy() => s.destroy();
+}
+
+/// Encrypted data on a RawSecureSocket, read and written by hand: the
+/// Socket-level TLS upgrade can lose a short listing that the server sends
+/// and closes right after the handshake (seen with Pure-FTPd + TLS 1.3).
+class _TlsData implements _Data {
+  _TlsData(this.raw, this.host, this.badCert);
+  RawSocket raw;
+  final String host;
+  final bool Function(X509Certificate) badCert;
+  final _in = StreamController<List<int>>();
+  Completer<void>? _writable;
+  bool _closed = false;
+
+  @override
+  Future<void> start() async {
+    final sec = await RawSecureSocket.secure(raw, host: host, onBadCertificate: badCert).timeout(const Duration(seconds: 8));
+    raw = sec;
+    sec.listen((ev) {
+      switch (ev) {
+        case RawSocketEvent.read:
+          _drain();
+        case RawSocketEvent.write:
+          final w = _writable;
+          _writable = null;
+          if (w != null && !w.isCompleted) w.complete();
+        case RawSocketEvent.readClosed:
+          _drain();
+          _end();
+        case RawSocketEvent.closed:
+          _end();
+      }
+    }, onError: (Object e) {
+      if (!_in.isClosed) _in.addError(e);
+      _end();
+    }, onDone: _end);
+    _drain();
+  }
+
+  void _drain() {
+    while (true) {
+      final d = raw.read();
+      if (d == null || d.isEmpty) break;
+      if (!_in.isClosed) _in.add(d);
+    }
+  }
+
+  void _end() {
+    if (!_in.isClosed) _in.close();
+    final w = _writable;
+    _writable = null;
+    if (w != null && !w.isCompleted) w.completeError(RemoteException('TLS data closed'));
+  }
+
+  @override
+  Stream<List<int>> get input => _in.stream;
+
+  @override
+  Future<void> write(List<int> bytes) async {
+    var off = 0;
+    while (off < bytes.length) {
+      if (_closed) throw RemoteException('TLS data closed');
+      final n = raw.write(bytes, off);
+      off += n;
+      if (off < bytes.length) {
+        _writable = Completer<void>();
+        raw.writeEventsEnabled = true;
+        await _writable!.future.timeout(const Duration(seconds: 60));
+      }
+    }
+  }
+
+  @override
+  Future<void> finish() async {
+    await raw.close();
+    _closed = true;
+  }
+
+  @override
+  void destroy() {
+    _closed = true;
+    try {
+      raw.close();
+    } catch (_) {}
+    _end();
+  }
+}
+
 /// Minimal FTP / FTPS (explicit or port 990 implicit) client: passive mode,
 /// MLSD with LIST fallback, binary transfers with progress.
 class FtpClient {
@@ -198,14 +315,14 @@ class FtpClient {
 
   /// Opens a passive data connection: EPSV first, PASV when EPSV is missing
   /// or its port can't be reached (some hosts only open PASV ports).
-  Future<Socket> _data() async {
+  Future<_Data> _data() async {
     final ctl = _w.socket.remoteAddress;
     if (!_noEpsv) {
       final e = await cmd('EPSV');
       final m = e.code == 229 ? RegExp(r'\(\|\|\|(\d+)\|\)').firstMatch(e.text) : null;
       if (m != null) {
         try {
-          return await Socket.connect(ctl, int.parse(m.group(1)!), timeout: const Duration(seconds: 8));
+          return await _open(ctl, int.parse(m.group(1)!), const Duration(seconds: 8));
         } catch (_) {
           _noEpsv = true;
         }
@@ -226,7 +343,7 @@ class FtpClient {
     Object? last;
     for (final a in targets) {
       try {
-        return await Socket.connect(a, port, timeout: const Duration(seconds: 10));
+        return await _open(a, port, const Duration(seconds: 10));
       } catch (e) {
         last = e;
       }
@@ -236,13 +353,19 @@ class FtpClient {
 
   bool get _encData => tls && protectData;
 
-  Future<Socket> _secureData(Socket s) async {
-    if (!_encData) return s;
+  Future<_Data> _open(InternetAddress a, int port, Duration timeout) async {
+    if (_encData) return _TlsData(await RawSocket.connect(a, port, timeout: timeout), host, _badCert);
+    return _PlainData(await Socket.connect(a, port, timeout: timeout));
+  }
+
+  /// Runs the data-channel handshake, turning TLS trouble into TlsDataException.
+  Future<void> _startData(_Data d) async {
     try {
-      return await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 8));
+      await d.start();
     } catch (_) {
-      s.destroy();
-      throw const TlsDataException();
+      d.destroy();
+      if (_encData) throw const TlsDataException();
+      rethrow;
     }
   }
 
@@ -291,18 +414,18 @@ class FtpClient {
   Future<List<int>> _dataCommand(String c) => _transfer(() => _dataCommand0(c));
 
   Future<List<int>> _dataCommand0(String c) async {
-    final ds = await _data();
-    final sec = _secureData(ds);
+    final d = await _data();
+    final sec = _startData(d);
     final r = await cmd(c);
     if (r.code != 150 && r.code != 125) {
-      ds.destroy();
+      d.destroy();
       sec.ignore();
       throw RemoteException('${c.split(' ').first}: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await sec;
+    await sec;
     final bytes = <int>[];
     try {
-      await for (final chunk in _guard(d, c.split(' ').first)) {
+      await for (final chunk in _guard(d.input, c.split(' ').first)) {
         bytes.addAll(chunk);
       }
     } finally {
@@ -317,18 +440,18 @@ class FtpClient {
       _transfer(() => _retr(path, localPath, onBytes, cancelled));
 
   Future<void> _retr(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
-    final ds = await _data();
-    final sec = _secureData(ds);
+    final d = await _data();
+    final sec = _startData(d);
     final r = await cmd('RETR $path');
     if (r.code != 150 && r.code != 125) {
-      ds.destroy();
+      d.destroy();
       sec.ignore();
       throw RemoteException('RETR: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await sec;
+    await sec;
     final out = await File(localPath).open(mode: FileMode.write);
     try {
-      await for (final chunk in _guard(d, 'RETR')) {
+      await for (final chunk in _guard(d.input, 'RETR')) {
         if (cancelled()) {
           d.destroy();
           throw JobCancelled();
@@ -338,6 +461,7 @@ class FtpClient {
       }
     } finally {
       await out.close();
+      d.destroy();
     }
     final done = await _reply();
     if (!done.ok) throw RemoteException('RETR: ${done.code} ${done.text}');
@@ -347,15 +471,15 @@ class FtpClient {
       _transfer(() => _stor(path, localPath, onBytes, cancelled));
 
   Future<void> _stor(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
-    final ds = await _data();
-    final sec = _secureData(ds);
+    final d = await _data();
+    final sec = _startData(d);
     final r = await cmd('STOR $path');
     if (r.code != 150 && r.code != 125) {
-      ds.destroy();
+      d.destroy();
       sec.ignore();
       throw RemoteException('STOR: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await sec;
+    await sec;
     final input = await File(localPath).open();
     try {
       while (true) {
@@ -365,11 +489,10 @@ class FtpClient {
         }
         final chunk = await input.read(256 * 1024);
         if (chunk.isEmpty) break;
-        d.add(chunk);
-        await d.flush();
+        await d.write(chunk);
         onBytes(chunk.length);
       }
-      await d.close();
+      await d.finish();
     } finally {
       await input.close();
     }
