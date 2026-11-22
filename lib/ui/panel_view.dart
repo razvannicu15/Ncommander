@@ -653,7 +653,13 @@ class _PanelViewState extends State<PanelView> {
     final selecting = p.hasSelection;
     final dim = cs.onSurfaceVariant;
     final iconSize = (store.compact ? 38.0 : 44.0) * s;
-    final meta = TextStyle(fontSize: 12.5 * s, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()], height: 1.2);
+    final meta = TextStyle(
+      fontSize: 12 * s,
+      fontWeight: FontWeight.w400,
+      color: sel ? cs.primary.withValues(alpha: 0.8) : dim.withValues(alpha: 0.75),
+      fontFeatures: const [FontFeature.tabularFigures()],
+      height: 1.2,
+    );
 
     return Material(
       key: e.name == p.focusName ? _focusKey : null,
@@ -703,14 +709,13 @@ class _PanelViewState extends State<PanelView> {
                 constraints: BoxConstraints(minHeight: iconSize + (store.compact ? 18 : 24)),
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.5))),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // The whole name, however long: it wraps instead of being cut.
                   Text(
                     e.name,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 15 * s,
                       height: 1.2,
-                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w400,
                       color: sel ? cs.primary : (e.hidden ? dim : cs.onSurface),
                     ),
                   ),

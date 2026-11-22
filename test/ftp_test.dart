@@ -1,4 +1,5 @@
-// Talks to a real FTP server (pyftpdlib in CI). Runs only with FTP_TEST=host:port.
+// Talks to real FTP servers started by CI (pyftpdlib, Pure-FTPd, Pure-FTPd + TLS).
+// FTP_SERVERS="name|host|port|user|password|tls;..." — skipped when unset.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,31 +11,46 @@ import 'package:ncommander/services/vfs.dart';
 import 'package:ncommander/services/vfs_ftp.dart';
 
 void main() {
-  final env = Platform.environment['FTP_TEST'];
-  final skip = env == null;
+  final env = Platform.environment['FTP_SERVERS'] ?? '';
+  final specs = env.split(';').where((s) => s.trim().isNotEmpty).toList();
+  for (final spec in specs) {
+    final f = spec.split('|');
+    group(f[0], () => serverTests(Conn(
+          id: 'srv_${f[0]}',
+          type: ConnType.ftp,
+          name: f[0],
+          host: f[1],
+          port: int.parse(f[2]),
+          user: f[3],
+          password: f[4],
+          tls: f[5] == '1',
+        )));
+  }
+  parserTests();
+}
+
+void serverTests(Conn conn) {
+  const skip = false;
   late Directory tmp;
-  late Conn conn;
   late FtpVfs v;
 
   setUpAll(() {
-    if (skip) return;
     setLanguage('ro');
-    final hp = env.split(':');
-    conn = Conn(id: 't1', type: ConnType.ftp, name: 'test', host: hp[0], port: int.parse(hp[1]), user: 'nc', password: 'pw');
     store.conns.add(conn);
     v = vfsFor(conn.root)! as FtpVfs;
   });
-  setUp(() {
-    if (!skip) tmp = Directory.systemTemp.createTempSync('ncftp_');
-  });
-  tearDown(() {
-    if (!skip) tmp.deleteSync(recursive: true);
-  });
+  setUp(() => tmp = Directory.systemTemp.createTempSync('ncftp_'));
+  tearDown(() => tmp.deleteSync(recursive: true));
 
   FileOps ops() => FileOps((_) async => const ConflictAnswer(ConflictAction.overwrite, forAll: true));
 
+  test('lists the root quickly', () async {
+    final list = await v.list(conn.root).timeout(const Duration(seconds: 20));
+    expect(list, isA<List<Entry>>());
+  });
+
   test('login errors are readable', () async {
-    final bad = Conn(id: 'x', type: ConnType.ftp, name: 'x', host: conn.host, port: conn.port, user: 'nc', password: 'wrong');
+    final bad = Conn(id: 'x', type: ConnType.ftp, name: 'x', host: conn.host, port: conn.port, user: conn.user, password: 'wrong', tls: conn.tls);
     expect(await testFtp(bad), contains('parolă'));
     expect(await testFtp(conn), isNull);
   }, skip: skip);
@@ -97,6 +113,9 @@ void main() {
     expect(await v.find(conn.root, 'c.txt'), isNull);
   }, skip: skip);
 
+}
+
+void parserTests() {
   test('path helpers for remote paths', () {
     expect(parentOf('ftp://id/a/b'), 'ftp://id/a');
     expect(parentOf('ftp://id/a'), 'ftp://id');

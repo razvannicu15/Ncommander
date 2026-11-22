@@ -156,7 +156,7 @@ class FtpClient {
       final r = await cmd('AUTH TLS');
       if (r.code != 234) throw RemoteException(tr('Serverul nu acceptă TLS', 'The server doesn\'t support TLS'));
       final raw = _w.detach();
-      final sec = await SecureSocket.secure(raw, host: host, onBadCertificate: _badCert);
+      final sec = await SecureSocket.secure(raw, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 15));
       _w.attach(sec);
     }
     if (tls) {
@@ -178,27 +178,61 @@ class FtpClient {
     connected = true;
   }
 
-  /// Opens a passive data connection (EPSV, then PASV).
+  bool _noEpsv = false;
+  static const _dataTimeout = Duration(seconds: 20);
+
+  static bool _private(InternetAddress a) {
+    final b = a.rawAddress;
+    if (a.type != InternetAddressType.IPv4 || b.length != 4) return false;
+    return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168) || b[0] == 127;
+  }
+
+  /// Opens a passive data connection: EPSV first, PASV when EPSV is missing
+  /// or its port can't be reached (some hosts only open PASV ports).
   Future<Socket> _data() async {
-    int? p;
-    final e = await cmd('EPSV');
-    if (e.code == 229) {
-      final m = RegExp(r'\(\|\|\|(\d+)\|\)').firstMatch(e.text);
-      if (m != null) p = int.parse(m.group(1)!);
+    final ctl = _w.socket.remoteAddress;
+    if (!_noEpsv) {
+      final e = await cmd('EPSV');
+      final m = e.code == 229 ? RegExp(r'\(\|\|\|(\d+)\|\)').firstMatch(e.text) : null;
+      if (m != null) {
+        try {
+          return await Socket.connect(ctl, int.parse(m.group(1)!), timeout: const Duration(seconds: 8));
+        } catch (_) {
+          _noEpsv = true;
+        }
+      } else {
+        _noEpsv = true;
+      }
     }
-    if (p == null) {
-      final r = await _expect('PASV', [227]);
-      final m = RegExp(r'(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)').firstMatch(r.text);
-      if (m == null) throw RemoteException('PASV: ${r.text}');
-      p = int.parse(m.group(5)!) * 256 + int.parse(m.group(6)!);
+    final r = await _expect('PASV', [227]);
+    final m = RegExp(r'(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)').firstMatch(r.text);
+    if (m == null) throw RemoteException('PASV: ${r.text}');
+    final port = int.parse(m.group(5)!) * 256 + int.parse(m.group(6)!);
+    final told = InternetAddress('${m.group(1)}.${m.group(2)}.${m.group(3)}.${m.group(4)}');
+    // A private address in the reply means NAT: use the server's public address.
+    final targets = <InternetAddress>[
+      if (!_private(told) || _private(ctl)) told,
+      ctl,
+    ];
+    Object? last;
+    for (final a in targets) {
+      try {
+        return await Socket.connect(a, port, timeout: const Duration(seconds: 10));
+      } catch (e) {
+        last = e;
+      }
     }
-    // The control connection's address works behind NAT, unlike the one PASV reports.
-    final addr = _w.socket.remoteAddress;
-    return Socket.connect(addr, p, timeout: const Duration(seconds: 15));
+    throw RemoteException(tr('Nu se poate deschide conexiunea de date (PASV)', 'Can\'t open the data connection (PASV)') + (last == null ? '' : ': $last'));
   }
 
   Future<Socket> _secureData(Socket s) async =>
-      tls ? await SecureSocket.secure(s, host: host, onBadCertificate: _badCert) : s;
+      tls ? await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 15)) : s;
+
+  /// Data stream with a clear error when the server stops sending.
+  Stream<List<int>> _guard(Stream<List<int>> s, String what) => s.timeout(_dataTimeout, onTimeout: (sink) {
+        sink.addError(RemoteException(tr('$what: serverul nu trimite date', '$what: the server sends no data')));
+        sink.close();
+      });
 
   Future<void> cwd(String path) => _expect('CWD $path');
 
@@ -230,8 +264,12 @@ class FtpClient {
     }
     final d = await _secureData(ds);
     final bytes = <int>[];
-    await for (final chunk in d.timeout(const Duration(seconds: 60))) {
-      bytes.addAll(chunk);
+    try {
+      await for (final chunk in _guard(d, c.split(' ').first)) {
+        bytes.addAll(chunk);
+      }
+    } finally {
+      d.destroy();
     }
     final done = await _reply();
     if (!done.ok) throw RemoteException('${c.split(' ').first}: ${done.code} ${done.text}');
@@ -248,7 +286,7 @@ class FtpClient {
     final d = await _secureData(ds);
     final out = await File(localPath).open(mode: FileMode.write);
     try {
-      await for (final chunk in d.timeout(const Duration(seconds: 60))) {
+      await for (final chunk in _guard(d, 'RETR')) {
         if (cancelled()) {
           d.destroy();
           throw JobCancelled();
@@ -502,7 +540,9 @@ Future<String?> testFtp(Conn c) async {
   final f = FtpClient(host: c.host, port: c.port, user: c.user, password: c.password, tls: c.tls);
   try {
     await f.connect();
-    await f.cwd(c.folder.isEmpty ? '/' : c.folder);
+    final dir = c.folder.isEmpty ? '/' : c.folder;
+    // Also list, so "Connected" means browsing works (data connection included).
+    await f.list(dir, 'ftp://test');
     await f.quit();
     return null;
   } catch (e) {
