@@ -28,6 +28,7 @@ class Conn {
     this.folder = '/',
     this.account = '',
     this.token = '',
+    this.clearData = false,
   });
 
   final String id;
@@ -46,6 +47,9 @@ class Conn {
   /// OneDrive refresh token.
   String token;
 
+  /// FTPS server that only accepts clear data connections (login stays encrypted).
+  bool clearData;
+
   String get root => '${type.name}://$id';
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +64,7 @@ class Conn {
         'folder': folder,
         'account': account,
         'token': token,
+        'clearData': clearData,
       };
 
   static Conn? fromJson(Map j) {
@@ -77,6 +82,7 @@ class Conn {
       folder: (j['folder'] as String?) ?? '/',
       account: (j['account'] as String?) ?? '',
       token: (j['token'] as String?) ?? '',
+      clearData: j['clearData'] == true,
     );
   }
 }

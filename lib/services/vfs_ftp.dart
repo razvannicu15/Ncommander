@@ -384,11 +384,50 @@ class FtpClient {
     }
   }
 
-  /// Data stream with a clear error when the server stops sending.
-  Stream<List<int>> _guard(Stream<List<int>> s, String what) => s.timeout(_dataTimeout, onTimeout: (sink) {
-        sink.addError(RemoteException(tr('$what: serverul nu trimite date', '$what: the server sends no data')));
-        sink.close();
+  /// Data stream with a clear error when the server stops sending. On an
+  /// encrypted channel silence right at the start means the server won't
+  /// talk TLS on data connections: give up fast and switch to clear data.
+  Stream<List<int>> _guard(Stream<List<int>> s, String what) {
+    var first = true;
+    final c = StreamController<List<int>>();
+    StreamSubscription<List<int>>? sub;
+    Timer? t;
+    void arm() {
+      t?.cancel();
+      t = Timer(first && _encData ? const Duration(seconds: 6) : _dataTimeout, () {
+        sub?.cancel();
+        if (!c.isClosed) {
+          c.addError(first && _encData
+              ? const TlsDataException()
+              : RemoteException(tr('$what: serverul nu trimite date', '$what: the server sends no data')));
+          c.close();
+        }
       });
+    }
+
+    c.onListen = () {
+      arm();
+      sub = s.listen((d) {
+        first = false;
+        arm();
+        c.add(d);
+      }, onError: (Object e) {
+        t?.cancel();
+        if (!c.isClosed) {
+          c.addError(e);
+          c.close();
+        }
+      }, onDone: () {
+        t?.cancel();
+        if (!c.isClosed) c.close();
+      });
+    };
+    c.onCancel = () {
+      t?.cancel();
+      return sub?.cancel();
+    };
+    return c.stream;
+  }
 
   Future<void> cwd(String path) => _expect('CWD $path');
 
@@ -603,8 +642,8 @@ class FtpVfs extends Vfs {
   FtpClient? _browse, _xfer;
   Future<void> _browseLock = Future.value(), _xferLock = Future.value();
 
-  /// Set when the server can't do encrypted data connections.
-  bool _clearData = false;
+  /// Set when the server can't do encrypted data connections (remembered).
+  late bool _clearData = conn.clearData;
 
   FtpClient _make() =>
       FtpClient(host: conn.host, port: conn.port, user: conn.user, password: conn.password, tls: conn.tls, protectData: !_clearData);
@@ -654,6 +693,8 @@ class FtpVfs extends Vfs {
             }
             if (_clearData) throw RemoteException(tr('Conexiunea de date TLS nu merge', 'The TLS data connection fails'));
             _clearData = true; // and try again with PROT C
+            conn.clearData = true;
+            store.save(notify: false);
           } on RemoteException {
             rethrow;
           } catch (e) {
