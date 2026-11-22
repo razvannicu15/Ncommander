@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -115,7 +114,7 @@ class ColorDot extends StatelessWidget {
 // ------------------------------------------------------------ thumbnails
 
 class _ThumbCache {
-  final _map = LinkedHashMap<String, Future<Uint8List?>>();
+  final _map = <String, Future<Uint8List?>>{};
 
   Future<Uint8List?> get(String key, Future<Uint8List?> Function() make) {
     final hit = _map.remove(key);

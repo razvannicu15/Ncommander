@@ -80,8 +80,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState s) {
-    if (s == AppLifecycleState.resumed) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
       volumes.refresh();
       for (final p in panels) {
         p.load(keepSelection: true, quiet: true);
@@ -89,7 +89,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     }
   }
 
-  void activate(int i) {
+  void activatePanel(int i) {
     if (active == i) return;
     setState(() => active = i);
     store.activePanel = i;
@@ -416,7 +416,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       case 'share':
         share();
       case 'with':
-        await Native.open(single!.path, single!.kind.mimeFor(single!.name), chooser: true);
+        await Native.open(single!.path, single.kind.mimeFor(single.name), chooser: true);
       case 'props':
         await showProperties(context, items);
       case 'path':
@@ -426,7 +426,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         cur.clearSelection();
         await cur.newTab(single!.path);
       case 'mark':
-        store.toggleBookmark(single!.path, single!.name);
+        store.toggleBookmark(single!.path, single.name);
         cur.clearSelection();
       case 'otherOpen':
         cur.clearSelection();
@@ -537,9 +537,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
               key: ValueKey('panel$i'),
               panel: panels[i],
               active: active == i,
-              onActivate: () => activate(i),
+              onActivate: () => activatePanel(i),
               onOpen: (e) {
-                activate(i);
+                activatePanel(i);
                 open(e);
               },
               onDrawer: () => _scaffold.currentState?.openDrawer(),
