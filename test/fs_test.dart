@@ -191,9 +191,28 @@ void main() {
     write('r/b/c/photo2.JPG');
     write('r/b/doc.pdf');
     final found = <String>[];
-    await for (final batch in search(p('r'), '*.jpg')) {
+    await for (final batch in search(p('r'), const SearchQuery(mask: '*.jpg'))) {
       found.addAll(batch.map((e) => e.name));
     }
     expect(found.toSet(), {'photo1.jpg', 'photo2.JPG'});
+  });
+
+  test('advanced search: type, size, content', () async {
+    write('r/a.jpg', 'x' * 2000);
+    write('r/b.jpg', 'x');
+    write('r/notes/todo.txt', 'cumpără lapte și PÂINE');
+    write('r/notes/other.txt', 'nimic');
+    Future<Set<String>> run(SearchQuery q) async {
+      final out = <String>{};
+      await for (final b in search(p('r'), q)) {
+        out.addAll(b.map((e) => e.name));
+      }
+      return out;
+    }
+
+    expect(await run(const SearchQuery(kinds: {'image'}, minSize: 1000)), {'a.jpg'});
+    expect(await run(const SearchQuery(content: 'pâine')), {'todo.txt'});
+    expect(await run(const SearchQuery(foldersOnly: true)), {'notes'});
+    expect(await run(const SearchQuery(mask: '*.txt', recursive: false)), isEmpty);
   });
 }

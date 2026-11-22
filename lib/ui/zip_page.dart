@@ -140,8 +140,9 @@ class _ZipPageState extends State<ZipPage> {
                       return ListTile(
                         leading: EntryIcon(e, size: 36),
                         title: Text(e.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(e.isDir ? tr('folder', 'folder') : '${fmtSize(e.size)} · ${fmtListDate(e.modified)}',
-                            style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+                        subtitle: e.isDir
+                            ? null
+                            : Text('${fmtSize(e.size)} · ${fmtListDate(e.modified)}', style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
                         onTap: () => _open(e),
                       );
                     },

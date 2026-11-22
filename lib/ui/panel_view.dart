@@ -7,6 +7,7 @@ import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/store.dart';
+import 'connections.dart';
 import 'widgets.dart';
 
 enum PanelAction {
@@ -25,7 +26,14 @@ enum PanelAction {
   sameAsOther,
 }
 
-double rowHeight() => (store.compact ? 48.0 : 58.0) * store.fontScale;
+double rowHeight() => (store.table ? (store.compact ? 38.0 : 44.0) : (store.compact ? 48.0 : 58.0)) * store.fontScale;
+
+/// Column widths of the table view for a panel [width]; the date column
+/// drops out when the panel is narrow (side by side on a phone).
+(double, double) tableCols(double width) {
+  final s = store.fontScale;
+  return (66 * s, width >= 330 ? 92 * s : 0);
+}
 
 class PanelView extends StatefulWidget {
   const PanelView({
@@ -134,7 +142,12 @@ class _PanelViewState extends State<PanelView> {
         child: Column(children: [
           _header(cs),
           if (p.filtering) _filterBar(cs),
-          Expanded(child: _list(cs)),
+          Expanded(
+            child: LayoutBuilder(builder: (_, c) {
+              _width = c.maxWidth;
+              return _list(cs);
+            }),
+          ),
           _footer(cs),
         ]),
       ),
@@ -181,6 +194,14 @@ class _PanelViewState extends State<PanelView> {
         ),
       ]),
     );
+  }
+
+  IconData _rootIcon() {
+    final c = p.conn;
+    if (c != null) return connIcon(c.type);
+    final v = volumes.of(p.path);
+    if (v == null) return Icons.storage_rounded;
+    return v.primary ? Icons.smartphone_rounded : (v.removable ? Icons.sd_card_outlined : Icons.usb_rounded);
   }
 
   IconData _sortIcon() => switch (p.sort.by) {
@@ -252,6 +273,11 @@ class _PanelViewState extends State<PanelView> {
           final (label, path) = crumbs[i];
           return Row(children: [
             if (i > 0) Icon(Icons.chevron_right_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+            if (i == 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Icon(_rootIcon(), size: 16, color: last ? cs.primary : cs.onSurfaceVariant),
+              ),
             InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: last
@@ -355,16 +381,20 @@ class _PanelViewState extends State<PanelView> {
         SizedBox(
           height: 160,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(denied ? Icons.lock_outline_rounded : (p.filter.isNotEmpty ? Icons.filter_alt_off_outlined : Icons.folder_open_rounded),
+            Icon(denied ? (p.remote ? Icons.cloud_off_rounded : Icons.lock_outline_rounded) : (p.filter.isNotEmpty ? Icons.filter_alt_off_outlined : Icons.folder_open_rounded),
                 size: 40, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
             const SizedBox(height: 8),
-            Text(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+              textAlign: TextAlign.center,
               denied
-                  ? tr('Acces refuzat', 'Access denied')
+                  ? (p.remote ? p.error! : tr('Acces refuzat', 'Access denied'))
                   : p.filter.isNotEmpty
                       ? tr('Nimic potrivit', 'No matches')
                       : tr('Folder gol', 'Empty folder'),
               style: TextStyle(color: cs.onSurfaceVariant),
+            ),
             ),
           ]),
         ),
@@ -383,13 +413,14 @@ class _PanelViewState extends State<PanelView> {
           padding: const EdgeInsets.only(bottom: 8),
           itemBuilder: (_, i) {
             if (parent && i == 0) return _parentRow(cs, h);
-            final e = p.entries[i - (parent ? 1 : 0)];
-            return _row(cs, e, h);
+            final idx = i - (parent ? 1 : 0);
+            final e = p.entries[idx];
+            return store.table ? _tableRow(cs, e, h, i) : _row(cs, e, h);
           },
         ),
       );
     }
-    return Stack(children: [
+    final stack = Stack(children: [
       RefreshIndicator(
         onRefresh: () => p.load(keepSelection: true, quiet: true),
         child: body,
@@ -397,10 +428,157 @@ class _PanelViewState extends State<PanelView> {
       if (p.loading && p.entries.isNotEmpty)
         const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
     ]);
+    if (!store.table) return stack;
+    return Column(children: [_columns(cs), Expanded(child: stack)]);
+  }
+
+  // ----------------------------------------------------------------- table
+
+  double _width = 400;
+
+  /// Column header: tap to sort, tap again to reverse (like TC).
+  Widget _columns(ColorScheme cs) {
+    final (sizeW, dateW) = tableCols(_width);
+    final s = store.fontScale;
+    Widget head(String label, SortBy by, {double? width, TextAlign align = TextAlign.left}) {
+      final on = p.sort.by == by;
+      final style = TextStyle(
+        fontSize: 11.5,
+        fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+        color: on ? cs.primary : cs.onSurfaceVariant,
+        letterSpacing: 0.2,
+      );
+      final row = Row(
+        mainAxisAlignment: align == TextAlign.right ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.clip, style: style)),
+          if (on) Icon(p.sort.asc ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded, size: 18, color: cs.primary),
+        ],
+      );
+      final cell = InkWell(
+        onTap: () {
+          widget.onActivate();
+          p.setSort(SortOrder(by, on ? !p.sort.asc : (by == SortBy.name || by == SortBy.ext)));
+        },
+        child: Container(height: 28, alignment: align == TextAlign.right ? Alignment.centerRight : Alignment.centerLeft, child: row),
+      );
+      return width == null ? Expanded(child: cell) : SizedBox(width: width, child: cell);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.6)),
+      ),
+      padding: EdgeInsets.only(left: 12 + 24 * s + 12, right: 12),
+      child: Row(children: [
+        head(p.sort.by == SortBy.ext ? tr('Nume · ext', 'Name · ext') : tr('Nume', 'Name'), p.sort.by == SortBy.ext ? SortBy.ext : SortBy.name),
+        head(tr('Mărime', 'Size'), SortBy.size, width: sizeW, align: TextAlign.right),
+        if (dateW > 0) head(tr('Dată', 'Date'), SortBy.date, width: dateW, align: TextAlign.right),
+      ]),
+    );
+  }
+
+  Widget _tableRow(ColorScheme cs, Entry e, double h, int i) {
+    final sel = p.selected.contains(e.path);
+    final flash = _flash == e.name;
+    final s = store.fontScale;
+    final (sizeW, dateW) = tableCols(_width);
+    final selecting = p.hasSelection;
+    final dim = cs.onSurfaceVariant;
+    final num = TextStyle(fontSize: 12.5 * s, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()]);
+    final zebra = i.isOdd ? cs.onSurface.withValues(alpha: 0.028) : Colors.transparent;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          widget.onActivate();
+          if (selecting) {
+            p.toggle(e);
+          } else {
+            widget.onOpen(e);
+          }
+        },
+        onLongPress: () {
+          widget.onActivate();
+          HapticFeedback.selectionClick();
+          if (selecting && !sel) {
+            p.selectRange(e);
+          } else {
+            p.toggle(e);
+          }
+        },
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: flash ? 120 : 380),
+          color: sel
+              ? cs.primary.withValues(alpha: 0.14)
+              : flash
+                  ? cs.tertiary.withValues(alpha: 0.18)
+                  : zebra,
+          padding: const EdgeInsets.only(right: 12),
+          child: Row(children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                widget.onActivate();
+                HapticFeedback.selectionClick();
+                p.toggle(e);
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                child: SizedBox(
+                  height: h,
+                  child: Center(
+                    child: Opacity(
+                      opacity: e.hidden ? 0.5 : 1,
+                      child: EntryIcon(e, size: 24 * s, selected: sel, plain: !store.thumbnails),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                e.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14 * s,
+                  fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w400,
+                  color: sel ? cs.primary : (e.hidden ? dim : cs.onSurface),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: sizeW,
+              child: Text(e.isDir ? '' : fmtSize(e.size), textAlign: TextAlign.right, maxLines: 1, style: num),
+            ),
+            if (dateW > 0)
+              SizedBox(width: dateW, child: Text(fmtListDate(e.modified), textAlign: TextAlign.right, maxLines: 1, style: num)),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _parentRow(ColorScheme cs, double h) {
     final s = store.fontScale;
+    if (store.table) {
+      return InkWell(
+        onTap: () {
+          widget.onActivate();
+          p.up();
+        },
+        child: SizedBox(
+          height: h,
+          child: Row(children: [
+            SizedBox(width: 12 + 24 * s + 12, child: Icon(Icons.subdirectory_arrow_left_rounded, size: 20 * s, color: cs.onSurfaceVariant)),
+            Text('..', style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          ]),
+        ),
+      );
+    }
     return InkWell(
       onTap: () {
         widget.onActivate();
@@ -498,7 +676,7 @@ class _PanelViewState extends State<PanelView> {
                   ),
                   SizedBox(height: store.compact ? 2 : 4),
                   Row(children: [
-                    Text(e.isDir ? tr('folder', 'folder') : fmtSize(e.size), style: sub),
+                    if (!e.isDir) Text(fmtSize(e.size), style: sub),
                     const Spacer(),
                     Text(fmtListDate(e.modified), style: sub),
                   ]),

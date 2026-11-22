@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 
+import '../core/file_types.dart';
 import '../core/format.dart';
 import '../core/i18n.dart';
 import '../models/entry.dart';
@@ -703,9 +705,57 @@ Future<void> extractOne(String zip, String entryName, String dest) => Isolate.ru
       }
     });
 
-/// Recursive search by mask in one background isolate; results stream in
-/// batches. Cancel the subscription to stop.
-Stream<List<Entry>> search(String root, String mask, {bool includeHidden = false}) {
+/// What to look for. Plain data so it can go to the search isolate.
+class SearchQuery {
+  const SearchQuery({
+    this.mask = '',
+    this.kinds = const {},
+    this.minSize,
+    this.maxSize,
+    this.after,
+    this.content = '',
+    this.recursive = true,
+    this.hidden = false,
+    this.foldersOnly = false,
+  });
+  final String mask;
+  final Set<String> kinds; // Kind names
+  final int? minSize, maxSize;
+  final DateTime? after;
+  final String content;
+  final bool recursive, hidden, foldersOnly;
+
+  bool get isEmpty => mask.trim().isEmpty && kinds.isEmpty && minSize == null && maxSize == null && after == null && content.trim().isEmpty && !foldersOnly;
+}
+
+bool _matches(Entry e, SearchQuery q, String needle) {
+  if (q.foldersOnly && !e.isDir) return false;
+  if (!e.isDir) {
+    if (q.kinds.isNotEmpty && !q.kinds.contains(e.kind.name)) return false;
+    if (q.minSize != null && e.size < q.minSize!) return false;
+    if (q.maxSize != null && e.size > q.maxSize!) return false;
+  } else if (q.kinds.isNotEmpty || q.minSize != null || q.maxSize != null || needle.isNotEmpty) {
+    return false;
+  }
+  if (q.after != null && e.modified.isBefore(q.after!)) return false;
+  if (q.mask.trim().isNotEmpty && !matchesMask(e.name, q.mask)) return false;
+  if (needle.isNotEmpty) {
+    if (e.size > 4 * 1024 * 1024 || e.size == 0) return false;
+    final k = e.kind;
+    if (k != Kind.text && k != Kind.code && k != Kind.other && !(k == Kind.sheet && e.ext == 'csv')) return false;
+    try {
+      final text = utf8.decode(File(e.path).readAsBytesSync(), allowMalformed: true).toLowerCase();
+      if (!text.contains(needle)) return false;
+    } catch (_) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Recursive search in one background isolate; results stream in batches.
+/// Cancel the subscription to stop.
+Stream<List<Entry>> search(String root, SearchQuery query) {
   late StreamController<List<Entry>> ctl;
   Isolate? iso;
   final port = ReceivePort();
@@ -719,7 +769,7 @@ Stream<List<Entry>> search(String root, String mask, {bool includeHidden = false
           ctl.add(m);
         }
       });
-      iso = await Isolate.spawn(_searchWorker, [port.sendPort, root, mask, includeHidden], onExit: port.sendPort);
+      iso = await Isolate.spawn(_searchWorker, [port.sendPort, root, query], onExit: port.sendPort);
     },
     onCancel: () {
       iso?.kill(priority: Isolate.immediate);
@@ -732,8 +782,8 @@ Stream<List<Entry>> search(String root, String mask, {bool includeHidden = false
 void _searchWorker(List<Object?> a) {
   final send = a[0] as SendPort;
   final root = a[1] as String;
-  final mask = a[2] as String;
-  final hidden = a[3] as bool;
+  final q = a[2] as SearchQuery;
+  final needle = q.content.trim().toLowerCase();
   final queue = <String>[root];
   var batch = <Entry>[];
   var n = 0;
@@ -741,9 +791,9 @@ void _searchWorker(List<Object?> a) {
   while (queue.isNotEmpty && n < 5000) {
     final r = listDirSync(queue.removeAt(0));
     for (final e in r.entries) {
-      if (!hidden && e.hidden) continue;
-      if (e.isDir && !e.isLink) queue.add(e.path);
-      if (matchesMask(e.name, mask)) {
+      if (!q.hidden && e.hidden) continue;
+      if (q.recursive && e.isDir && !e.isLink) queue.add(e.path);
+      if (_matches(e, q, needle)) {
         batch.add(e);
         n++;
       }

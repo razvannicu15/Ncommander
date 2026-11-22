@@ -254,6 +254,7 @@ class MainActivity : FlutterActivity() {
 
     private fun thumb(path: String, kind: String, size: Int): ByteArray? {
         val bmp: Bitmap? = when (kind) {
+            "image" -> imageThumb(path, size)
             "video" -> videoThumb(path, size)
             "audio" -> MediaMetadataRetriever().let { r ->
                 try {
@@ -269,13 +270,40 @@ class MainActivity : FlutterActivity() {
         }
         bmp ?: return null
         val out = ByteArrayOutputStream()
-        bmp.compress(if (kind == "apk") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 85, out)
+        val sq = if (kind == "apk") bmp else centerCrop(bmp, size)
+        sq.compress(if (kind == "apk") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 82, out)
         return out.toByteArray()
+    }
+
+    /** Uses the EXIF preview when there is one: fast even for 50 MP photos. */
+    private fun imageThumb(path: String, size: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                return ThumbnailUtils.createImageThumbnail(File(path), Size(size, size), null)
+            } catch (_: Exception) {
+            }
+        }
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, o)
+        if (o.outWidth <= 0) return null
+        var s = 1
+        while (o.outWidth / (s * 2) >= size && o.outHeight / (s * 2) >= size) s *= 2
+        return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
     }
 
     private fun videoThumb(path: String, size: Int): Bitmap? =
         if (Build.VERSION.SDK_INT >= 29) ThumbnailUtils.createVideoThumbnail(File(path), Size(size, size), null)
         else @Suppress("DEPRECATION") ThumbnailUtils.createVideoThumbnail(path, MediaStore.Images.Thumbnails.MINI_KIND)
+
+    /** Square, small: keeps the bytes sent to Flutter tiny. */
+    private fun centerCrop(b: Bitmap, size: Int): Bitmap {
+        val side = minOf(b.width, b.height)
+        if (side <= 0) return b
+        val x = (b.width - side) / 2
+        val y = (b.height - side) / 2
+        val c = Bitmap.createBitmap(b, x, y, side, side)
+        return if (side > size) Bitmap.createScaledBitmap(c, size, size, true) else c
+    }
 
     private fun decodeScaled(data: ByteArray, size: Int): Bitmap? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }

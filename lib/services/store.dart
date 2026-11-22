@@ -119,7 +119,8 @@ class Store extends ChangeNotifier {
   PanelLayout layout = PanelLayout.auto;
   bool foldersFirst = true;
   bool showHidden = false;
-  bool thumbnails = true;
+  bool thumbnails = false;
+  bool table = true;
   bool compact = true;
   bool showParent = true;
   bool confirmDelete = true;
@@ -164,7 +165,8 @@ class Store extends ChangeNotifier {
     layout = _enum(PanelLayout.values, s['layout'], PanelLayout.auto);
     foldersFirst = s['foldersFirst'] ?? true;
     showHidden = s['hidden'] ?? false;
-    thumbnails = s['thumbs'] ?? true;
+    thumbnails = s['thumbs2'] ?? false;
+    table = s['table'] ?? true;
     compact = s['compact'] ?? true;
     showParent = s['parent'] ?? true;
     confirmDelete = s['confirmDel'] ?? true;
@@ -194,7 +196,8 @@ class Store extends ChangeNotifier {
           'layout': layout.name,
           'foldersFirst': foldersFirst,
           'hidden': showHidden,
-          'thumbs': thumbnails,
+          'thumbs2': thumbnails,
+          'table': table,
           'compact': compact,
           'parent': showParent,
           'confirmDel': confirmDelete,

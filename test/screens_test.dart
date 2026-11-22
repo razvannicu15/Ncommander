@@ -13,6 +13,7 @@ import 'package:ncommander/services/native.dart';
 import 'package:ncommander/services/store.dart';
 import 'package:ncommander/ui/commander_page.dart';
 import 'package:ncommander/ui/editor_page.dart';
+import 'package:ncommander/ui/search_page.dart';
 import 'package:ncommander/ui/settings_page.dart';
 import 'package:ncommander/ui/zip_page.dart';
 
@@ -226,6 +227,18 @@ void main() {
     });
     await t.pump(const Duration(milliseconds: 300));
     await shot(t, '14_zip_dark');
+
+    // Advanced search panel.
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(app(SearchPage(root: home), Brightness.light));
+    await t.pump(const Duration(milliseconds: 300));
+    await shot(t, '15_search');
+
+    // List view (two-line rows) with thumbnails setting off.
+    store.table = false;
+    await commander(t, Brightness.light, left: 'Download', select: ['concert.mp4']);
+    await shot(t, '16_list_view');
+    store.table = true;
 
     store.language = 'en';
     setLanguage('en');

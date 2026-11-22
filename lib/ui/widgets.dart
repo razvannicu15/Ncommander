@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:async';
+import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -117,32 +118,132 @@ class ColorDot extends StatelessWidget {
 
 // ------------------------------------------------------------ thumbnails
 
-class _ThumbCache {
-  final _map = <String, Future<Uint8List?>>{};
+/// Previews come from Android (EXIF preview, video frame, PDF page, APK icon),
+/// two at a time, only for rows that stay on screen a moment.
+class _ThumbQueue {
+  final _done = <String, Uint8List?>{};
+  final _waiting = Queue<(String, String, String, int, Completer<Uint8List?>, bool Function())>();
+  int _running = 0;
 
-  Future<Uint8List?> get(String key, Future<Uint8List?> Function() make) {
-    final hit = _map.remove(key);
-    if (hit != null) {
-      _map[key] = hit;
-      return hit;
+  Uint8List? cached(String key) => _done[key];
+  bool has(String key) => _done.containsKey(key);
+
+  Future<Uint8List?> get(String key, String path, String kind, int size, bool Function() alive) {
+    final c = Completer<Uint8List?>();
+    _waiting.add((key, path, kind, size, c, alive));
+    _pump();
+    return c.future;
+  }
+
+  void _pump() {
+    while (_running < 2 && _waiting.isNotEmpty) {
+      // Newest first: what is on screen now matters more than what scrolled by.
+      final (key, path, kind, size, c, alive) = _waiting.removeLast();
+      if (!alive()) {
+        c.complete(null);
+        continue;
+      }
+      _running++;
+      Native.thumb(path, kind, size).then((b) {
+        _done[key] = b;
+        if (_done.length > 600) _done.remove(_done.keys.first);
+        c.complete(b);
+      }, onError: (_) => c.complete(null)).whenComplete(() {
+        _running--;
+        _pump();
+      });
     }
-    final f = make();
-    _map[key] = f;
-    while (_map.length > 400) {
-      _map.remove(_map.keys.first);
-    }
-    return f;
   }
 }
 
-final _thumbs = _ThumbCache();
+final _thumbs = _ThumbQueue();
+
+const _thumbKinds = {Kind.image, Kind.video, Kind.audio, Kind.pdf, Kind.apk};
+
+class _Thumb extends StatefulWidget {
+  const _Thumb(this.e, this.size, this.fallback);
+  final Entry e;
+  final double size;
+  final Widget fallback;
+  @override
+  State<_Thumb> createState() => _ThumbState();
+}
+
+class _ThumbState extends State<_Thumb> {
+  Uint8List? _bytes;
+  Timer? _delay;
+
+  String get _key => '${widget.e.path}:${widget.e.modified.millisecondsSinceEpoch}';
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(_Thumb old) {
+    super.didUpdateWidget(old);
+    if (old.e.path != widget.e.path || old.e.modified != widget.e.modified) {
+      _bytes = null;
+      _start();
+    }
+  }
+
+  void _start() {
+    _delay?.cancel();
+    if (_thumbs.has(_key)) {
+      _bytes = _thumbs.cached(_key);
+      return;
+    }
+    // Skip rows that fly past during a fast scroll.
+    _delay = Timer(const Duration(milliseconds: 180), () {
+      final key = _key;
+      final px = (widget.size * 2.5).round().clamp(64, 160);
+      _thumbs.get(key, widget.e.path, widget.e.kind.name, px, () => mounted && key == _key).then((b) {
+        if (mounted && key == _key && b != null) setState(() => _bytes = b);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _delay?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = _bytes;
+    if (b == null) return widget.fallback;
+    final apk = widget.e.kind == Kind.apk;
+    final r = BorderRadius.circular(widget.size * 0.28);
+    final img = Image.memory(b, width: widget.size, height: widget.size, fit: apk ? BoxFit.contain : BoxFit.cover, gaplessPlayback: true);
+    if (apk) return img;
+    return Stack(children: [
+      ClipRRect(borderRadius: r, child: img),
+      if (widget.e.kind == Kind.video)
+        Positioned(
+          right: 1,
+          bottom: 1,
+          child: Container(
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(5)),
+            child: Icon(Icons.play_arrow_rounded, size: widget.size * 0.4, color: Colors.white),
+          ),
+        ),
+    ]);
+  }
+}
 
 /// Icon in a tinted rounded square, or a real preview for media.
 class EntryIcon extends StatelessWidget {
-  const EntryIcon(this.e, {super.key, this.size = 36, this.selected = false});
+  const EntryIcon(this.e, {super.key, this.size = 36, this.selected = false, this.plain = false});
   final Entry e;
   final double size;
   final bool selected;
+
+  /// Table rows: just the glyph, no tinted square.
+  final bool plain;
 
   @override
   Widget build(BuildContext context) {
@@ -151,58 +252,17 @@ class EntryIcon extends StatelessWidget {
     final c = k.color(cs);
     final r = BorderRadius.circular(size * 0.28);
 
-    Widget base = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.13), borderRadius: r),
-      child: Icon(k.icon, size: size * 0.58, color: c),
-    );
-
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final px = (size * dpr).round();
-    if (store.thumbnails && !e.isDir && !isRemote(e.path)) {
-      if (k == Kind.image && e.ext != 'svg' && e.size > 0) {
-        base = ClipRRect(
-          borderRadius: r,
-          child: Image.file(
-            File(e.path),
-            key: ValueKey('${e.path}:${e.modified.millisecondsSinceEpoch}'),
+    Widget base = plain
+        ? SizedBox(width: size, height: size, child: Icon(k.icon, size: size * 0.86, color: c))
+        : Container(
             width: size,
             height: size,
-            fit: BoxFit.cover,
-            cacheWidth: px,
-            filterQuality: FilterQuality.medium,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => base,
-            frameBuilder: (_, child, frame, sync) => frame == null && !sync ? base : child,
-          ),
-        );
-      } else if ((k == Kind.video || k == Kind.audio || k == Kind.pdf || k == Kind.apk) && e.size > 0) {
-        final kind = k.name;
-        final f = _thumbs.get('${e.path}:${e.modified.millisecondsSinceEpoch}', () => Native.thumb(e.path, kind, px.clamp(64, 256)));
-        final fallback = base;
-        base = FutureBuilder<Uint8List?>(
-          future: f,
-          builder: (_, s) {
-            final bytes = s.data;
-            if (bytes == null) return fallback;
-            final img = Image.memory(bytes, width: size, height: size, fit: k == Kind.apk ? BoxFit.contain : BoxFit.cover, gaplessPlayback: true);
-            if (k == Kind.apk) return SizedBox(width: size, height: size, child: img);
-            return Stack(children: [
-              ClipRRect(borderRadius: r, child: img),
-              if (k == Kind.video)
-                Positioned(
-                  right: 2,
-                  bottom: 2,
-                  child: Container(
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-                    child: Icon(Icons.play_arrow_rounded, size: size * 0.36, color: Colors.white),
-                  ),
-                ),
-            ]);
-          },
-        );
-      }
+            decoration: BoxDecoration(color: c.withValues(alpha: 0.13), borderRadius: r),
+            child: Icon(k.icon, size: size * 0.58, color: c),
+          );
+
+    if (store.thumbnails && !e.isDir && !isRemote(e.path) && e.size > 0 && _thumbKinds.contains(k) && e.ext != 'svg') {
+      base = _Thumb(e, size, base);
     }
 
     return SizedBox(

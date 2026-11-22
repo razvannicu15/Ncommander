@@ -476,56 +476,126 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     final has = items.isNotEmpty;
     final single = items.length == 1 ? items.first : null;
     final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final bytes = items.fold<int>(0, (s, e) => s + (e.isDir ? 0 : e.size));
 
     Widget tile(String id, IconData icon, String label) => InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () => Navigator.pop(context, id),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: cs.secondaryContainer, borderRadius: BorderRadius.circular(16)),
-              child: Icon(icon, color: cs.onSecondaryContainer),
-            ),
-            const SizedBox(height: 6),
-            Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 12, height: 1.15)),
-          ]),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(color: cs.secondaryContainer, borderRadius: BorderRadius.circular(18)),
+                child: Icon(icon, color: cs.onSecondaryContainer),
+              ),
+              const SizedBox(height: 6),
+              Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 12, height: 1.15)),
+            ]),
+          ),
         );
 
-    final tiles = <Widget>[
-      if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
+    Widget grid(List<Widget> tiles) => GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 4,
+          childAspectRatio: 0.92,
+          children: tiles,
+        );
+
+    Widget chip(String id, IconData icon, String label) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ActionChip(
+            avatar: Icon(icon, size: 18),
+            label: Text(label),
+            onPressed: () => Navigator.pop(context, id),
+          ),
+        );
+
+    Widget label(String s) => Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(s, style: t.labelMedium?.copyWith(color: cs.primary, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+          ),
+        );
+
+    // Header: what the actions apply to.
+    final header = has
+        ? Container(
+            margin: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(18)),
+            child: Row(children: [
+              single != null
+                  ? EntryIcon(single, size: 42)
+                  : Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(12)),
+                      child: Text('${items.length}', style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                    ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(single?.name ?? itemsText(items.length),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (bytes > 0) fmtSize(bytes),
+                      if (single != null) fmtListDate(single.modified),
+                      if (single == null && items.any((e) => e.isDir)) foldersText(items.where((e) => e.isDir).length),
+                    ].join(' · '),
+                    style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                ]),
+              ),
+            ]),
+          )
+        : null;
+
+    final actions = <Widget>[
       if (has) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
       if (single != null && !single.isDir) tile('with', Icons.open_in_new_rounded, tr('Deschide cu', 'Open with')),
+      if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
       if (has) tile('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties')),
-      if (single != null) tile('path', Icons.content_copy_rounded, tr('Copiază calea', 'Copy path')),
+      if (single != null && single.isDir) tile('otherOpen', Icons.call_split_rounded, tr('În celălalt panou', 'In other panel')),
       if (single != null && single.isDir) tile('tab', Icons.tab_rounded, tr('În tab nou', 'In new tab')),
       if (single != null && single.isDir)
         tile('mark', store.isBookmarked(single.path) ? Icons.star_rounded : Icons.star_outline_rounded, tr('Favorite', 'Bookmark')),
-      if (single != null && single.isDir) tile('otherOpen', Icons.call_split_rounded, tr('Deschide în celălalt', 'Open in other')),
-      tile('all', Icons.select_all_rounded, tr('Selectează tot', 'Select all')),
-      tile('mask', Icons.rule_rounded, tr('După mască', 'By mask')),
-      if (has) tile('invert', Icons.flip_rounded, tr('Inversează', 'Invert')),
-      if (has) tile('none', Icons.deselect_rounded, tr('Deselectează', 'Deselect')),
-      if (!has && !cur.remote) tile('search', Icons.search_rounded, tr('Caută', 'Search')),
-      if (!has) tile('swap', Icons.swap_horiz_rounded, tr('Schimbă panourile', 'Swap panels')),
-      if (!has) tile('same', Icons.drag_handle_rounded, tr('Același folder', 'Same folder')),
-      tile('settings', Icons.settings_outlined, tr('Setări', 'Settings')),
+      if (single != null) tile('path', Icons.content_copy_rounded, tr('Copiază calea', 'Copy path')),
+    ];
+    final panelTiles = <Widget>[
+      if (!cur.remote) tile('search', Icons.manage_search_rounded, tr('Caută', 'Search')),
+      tile('swap', Icons.swap_horiz_rounded, tr('Schimbă panourile', 'Swap panels')),
+      tile('same', Icons.drag_handle_rounded, tr('Același folder', 'Same folder')),
+      tile('newtab', Icons.tab_rounded, tr('Tab nou', 'New tab')),
     ];
 
     final r = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (has) SheetTitle(single?.name ?? itemsText(items.length)),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 4,
-              childAspectRatio: 0.95,
-              children: tiles,
+            if (header != null) header,
+            if (actions.isNotEmpty) grid(actions),
+            label(tr('Selectare', 'Select')),
+            SizedBox(
+              height: 48,
+              child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 4), children: [
+                chip('all', Icons.select_all_rounded, tr('Tot', 'All')),
+                chip('mask', Icons.rule_rounded, tr('După mască', 'By mask')),
+                if (has) chip('invert', Icons.flip_rounded, tr('Inversează', 'Invert')),
+                if (has) chip('none', Icons.deselect_rounded, tr('Nimic', 'None')),
+              ]),
             ),
+            if (!has) ...[label(tr('Panouri', 'Panels')), grid(panelTiles)],
           ]),
         ),
       ),
@@ -571,8 +641,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         await swap();
       case 'same':
         await other.go(cur.path);
-      case 'settings':
-        await openSettings();
+      case 'newtab':
+        await cur.newTab();
     }
   }
 

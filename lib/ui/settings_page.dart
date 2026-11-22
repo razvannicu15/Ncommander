@@ -140,6 +140,22 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               ),
             ),
           ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: [
+                  ButtonSegment(value: true, icon: const Icon(Icons.table_rows_outlined), label: Text(tr('Tabel', 'Table'))),
+                  ButtonSegment(value: false, icon: const Icon(Icons.view_list_outlined), label: Text(tr('Listă', 'List'))),
+                ],
+                selected: {store.table},
+                onSelectionChanged: (s) => _set(() => store.table = s.first),
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           Group(padding: EdgeInsets.zero, children: between([
             ListTile(
