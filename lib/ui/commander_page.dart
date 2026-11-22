@@ -847,13 +847,17 @@ class _BarButton extends StatelessWidget {
             ),
             if (labels) ...[
               const SizedBox(height: 4),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Flexible(
-                  child: Text(label,
-                      maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w500)),
+              // Big phone fonts: shrink the label instead of cutting it.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(label, maxLines: 1, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w500)),
+                    if (arrow != null) ...[const SizedBox(width: 2), Icon(arrow, size: 11, color: c)],
+                  ]),
                 ),
-                if (arrow != null) ...[const SizedBox(width: 2), Icon(arrow, size: 11, color: c)],
-              ]),
+              ),
             ],
           ]),
         ),
