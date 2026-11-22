@@ -18,7 +18,7 @@ class ThemePreview extends StatelessWidget {
     const w = 104.0, h = 140.0;
 
     Widget row(Color icon, double nameW, {bool sel = false}) => Container(
-          height: 13,
+          height: 11,
           color: sel ? cs.primary.withValues(alpha: 0.16) : null,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(children: [
@@ -76,7 +76,6 @@ class ThemePreview extends StatelessWidget {
                 Column(children: [
                   panel(active: true, rows: [
                     row(folder, 34),
-                    row(folder, 26),
                     row(const Color(0xFF2E9E5B), 40, sel: true),
                     row(const Color(0xFFD23F31), 30),
                   ]),
