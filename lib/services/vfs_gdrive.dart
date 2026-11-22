@@ -219,8 +219,13 @@ class GDriveVfs extends Vfs {
 }
 
 /// Signs in with a Google account picked on the phone; returns its e-mail.
-Future<String> connectGoogle() async {
-  final token = await Native.googleToken('', interactive: true);
+Future<String> connectGoogle({Set<String> existing = const {}}) async {
+  final picked = await Native.googlePickAccount();
+  if (picked == null) throw RemoteException(tr('Autentificare Google anulată', 'Google sign-in cancelled'));
+  if (existing.contains(picked.toLowerCase())) {
+    throw RemoteException(tr('Contul $picked e deja adăugat', '$picked is already added'));
+  }
+  final token = await Native.googleToken(picked, interactive: true);
   if (token == null) throw RemoteException(tr('Autentificare Google anulată', 'Google sign-in cancelled'));
   final r = await Http.send('GET', Uri.parse('$_api/about?fields=user(emailAddress,displayName)'), headers: {'Authorization': 'Bearer $token'});
   if (!r.ok) throw RemoteException(r.error);

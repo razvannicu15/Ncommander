@@ -45,8 +45,12 @@ Future<Conn?> addConnection(BuildContext context) async {
       return editFtp(context);
     case ConnType.gdrive:
       return _signIn(context, () async {
-        final email = await connectGoogle();
-        return Conn(id: _newId(), type: ConnType.gdrive, name: 'Google Drive', account: email);
+        final have = store.conns.where((c) => c.type == ConnType.gdrive).map((c) => c.account.toLowerCase()).toSet();
+        final email = await connectGoogle(existing: have);
+        if (have.contains(email.toLowerCase())) throw RemoteException(tr('Contul $email e deja adăugat', '$email is already added'));
+        // Two Drive accounts: tell them apart by name.
+        final name = have.isEmpty ? 'Google Drive' : 'Drive · ${email.split('@').first}';
+        return Conn(id: _newId(), type: ConnType.gdrive, name: name, account: email);
       });
     case ConnType.onedrive:
       var id = store.onedriveClientId;

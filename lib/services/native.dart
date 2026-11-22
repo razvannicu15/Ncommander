@@ -92,5 +92,14 @@ class Native {
     }
   }
 
+  /// Opens the phone's Google account chooser; returns the e-mail or null.
+  static Future<String?> googlePickAccount() async {
+    try {
+      return await _ch.invokeMethod<String>('googlePickAccount');
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   static Future<void> googleClearToken(String token) => _call('googleClearToken', token);
 }

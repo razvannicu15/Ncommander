@@ -2,6 +2,7 @@ package ro.noraz.ncommander
 
 import android.Manifest
 import android.accounts.Account
+import android.accounts.AccountManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
@@ -47,6 +48,8 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var pendingGoogle: MethodChannel.Result? = null
     private val rcGoogle = 4711
+    private val rcPick = 4712
+    private var pendingPick: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -95,6 +98,19 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "googleToken" -> googleToken(call.argument<String>("account") ?: "", call.argument<Boolean>("interactive") == true, result)
+                    "googlePickAccount" -> {
+                        // System account chooser: lets the user pick any Google account on the phone.
+                        pendingPick?.success(null)
+                        pendingPick = result
+                        val i = AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)
+                        try {
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(i, rcPick)
+                        } catch (e: Exception) {
+                            pendingPick = null
+                            result.error("pick", e.message, null)
+                        }
+                    }
                     "googleClearToken" -> {
                         val t = call.arguments as String
                         pool.execute {
@@ -142,6 +158,12 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == rcPick) {
+            val r = pendingPick ?: return
+            pendingPick = null
+            r.success(if (resultCode == RESULT_OK) data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) else null)
+            return
+        }
         if (requestCode != rcGoogle) return
         val res = pendingGoogle ?: return
         pendingGoogle = null
