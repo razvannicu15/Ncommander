@@ -72,7 +72,17 @@ jobs:
       - name: FTP server log
         if: always()
         continue-on-error: true
-        run: sudo journalctl --no-pager -t pure-ftpd | tail -60 || true
+        run: |
+          sudo journalctl --no-pager -t pure-ftpd | grep -iE "tls|ssl|error|warn|logout|sni" | head -40 || true
+          python3 - <<'PY'
+          import ftplib, ssl
+          try:
+              f = ftplib.FTP_TLS(context=ssl._create_unverified_context())
+              f.connect('127.0.0.1', 2123, timeout=10); f.login('ncp', 'pw'); f.prot_p()
+              print('python PROT P listing:', f.nlst()[:5]); f.quit()
+          except Exception as e:
+              print('python PROT P failed:', repr(e))
+          PY
 
       # Real renders of every screen (light/dark, RO/EN) for visual review.
       - name: Screenshots

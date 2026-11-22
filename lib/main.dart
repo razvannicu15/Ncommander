@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/i18n.dart';
+import 'core/themes.dart';
 import 'models/panel.dart';
 import 'services/native.dart';
 import 'services/store.dart';
@@ -23,8 +24,8 @@ bool accessGranted = false;
 class NcommanderApp extends StatelessWidget {
   const NcommanderApp({super.key});
 
-  static ThemeData theme(Brightness b, {int? seed}) {
-    final scheme = ColorScheme.fromSeed(seedColor: Color(seed ?? store.seed), brightness: b);
+  static ThemeData theme(Brightness b, {String? id}) {
+    final scheme = themeById(id ?? store.themeId).scheme(b);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,

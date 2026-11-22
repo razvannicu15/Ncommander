@@ -96,6 +96,7 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
               icon: const Icon(Icons.more_vert_rounded, size: 20),
               onSelected: (a) => widget.onConnMenu(c, a),
               itemBuilder: (_) => [
+                PopupMenuItem(value: 'rename', child: Text(tr('Redenumește', 'Rename'))),
                 if (c.type == ConnType.ftp) PopupMenuItem(value: 'edit', child: Text(tr('Editează', 'Edit'))),
                 PopupMenuItem(value: 'remove', child: Text(tr('Elimină', 'Remove'))),
               ],

@@ -710,7 +710,14 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           },
           onConnMenu: (c, action) async {
             Navigator.of(context).pop();
-            if (action == 'edit') {
+            if (action == 'rename') {
+              final n = await askName(context, title: tr('Redenumește', 'Rename'), initial: c.name, icon: connIcon(c.type), action: tr('Salvează', 'Save'));
+              if (n != null && n.trim().isNotEmpty) {
+                c.name = n.trim();
+                await store.save();
+                setState(() {});
+              }
+            } else if (action == 'edit') {
               final e = await editFtp(context, c);
               if (e != null) {
                 for (final p in panels) {

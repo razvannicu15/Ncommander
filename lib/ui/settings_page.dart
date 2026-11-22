@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
+import '../core/themes.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import 'theme_preview.dart';
 import 'widgets.dart';
 
 /// Set by CI: --dart-define=BUILD=123 --dart-define=BUILT=22.11 14:58
@@ -117,11 +119,23 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             ),
           ),
           const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(spacing: 10, runSpacing: 10, children: [
-              for (final c in themeColors) ColorDot(Color(c), selected: store.seed == c, onTap: () => _set(() => store.seed = c)),
-            ]),
+          SizedBox(
+            height: 176,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: appThemes.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final t = appThemes[i];
+                return ThemePreview(
+                  theme: t,
+                  brightness: Theme.of(context).brightness,
+                  selected: store.themeId == t.id,
+                  onTap: () => _set(() => store.themeId = t.id),
+                );
+              },
+            ),
           ),
           SectionTitle(tr('Panouri', 'Panels')),
           Padding(

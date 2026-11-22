@@ -239,7 +239,7 @@ class FtpClient {
   Future<Socket> _secureData(Socket s) async {
     if (!_encData) return s;
     try {
-      return await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 10));
+      return await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 8));
     } catch (_) {
       s.destroy();
       throw const TlsDataException();
@@ -292,12 +292,14 @@ class FtpClient {
 
   Future<List<int>> _dataCommand0(String c) async {
     final ds = await _data();
+    final sec = _secureData(ds);
     final r = await cmd(c);
     if (r.code != 150 && r.code != 125) {
       ds.destroy();
+      sec.ignore();
       throw RemoteException('${c.split(' ').first}: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await _secureData(ds);
+    final d = await sec;
     final bytes = <int>[];
     try {
       await for (final chunk in _guard(d, c.split(' ').first)) {
@@ -316,12 +318,14 @@ class FtpClient {
 
   Future<void> _retr(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
     final ds = await _data();
+    final sec = _secureData(ds);
     final r = await cmd('RETR $path');
     if (r.code != 150 && r.code != 125) {
       ds.destroy();
+      sec.ignore();
       throw RemoteException('RETR: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await _secureData(ds);
+    final d = await sec;
     final out = await File(localPath).open(mode: FileMode.write);
     try {
       await for (final chunk in _guard(d, 'RETR')) {
@@ -344,12 +348,14 @@ class FtpClient {
 
   Future<void> _stor(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
     final ds = await _data();
+    final sec = _secureData(ds);
     final r = await cmd('STOR $path');
     if (r.code != 150 && r.code != 125) {
       ds.destroy();
+      sec.ignore();
       throw RemoteException('STOR: ${r.code} ${r.text.split('\n').first}');
     }
-    final d = await _secureData(ds);
+    final d = await sec;
     final input = await File(localPath).open();
     try {
       while (true) {

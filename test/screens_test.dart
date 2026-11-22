@@ -247,6 +247,14 @@ void main() {
     await shot(t, '18_detailed_bigfont');
     t.platformDispatcher.clearTextScaleFactorTestValue();
 
+    // Theme presets on the main screen.
+    for (final (id, b) in [('graphite', Brightness.light), ('nord', Brightness.dark), ('black', Brightness.dark), ('ocean', Brightness.light)]) {
+      store.themeId = id;
+      await commander(t, b, left: 'Download', select: ['concert.mp4']);
+      await shot(t, '19_theme_${id}_${b.name}');
+    }
+    store.themeId = 'amber';
+
     store.language = 'en';
     setLanguage('en');
     await commander(t, Brightness.light, left: 'Download', select: ['poze_vacanta.zip', 'concert.mp4']);

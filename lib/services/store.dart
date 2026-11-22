@@ -114,6 +114,7 @@ class PanelSaved {
 class Store extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   int seed = themeColors.first;
+  String themeId = 'amber';
   String language = 'system';
 
   PanelLayout layout = PanelLayout.auto;
@@ -163,6 +164,14 @@ class Store extends ChangeNotifier {
     final s = Map<String, dynamic>.from((j['settings'] as Map?) ?? {});
     themeMode = _enum(ThemeMode.values, s['theme'], ThemeMode.system);
     seed = s['seed'] ?? seed;
+    themeId = s['themeId'] ??
+        switch (seed) {
+          0xFF0E7C66 => 'forest',
+          0xFF6750A4 || 0xFF3F51B5 => 'dusk',
+          0xFF2B5CE6 || 0xFF00838F => 'ocean',
+          0xFF5D6B7A => 'graphite',
+          _ => 'amber',
+        };
     language = s['lang'] ?? 'system';
     layout = _enum(PanelLayout.values, s['layout'], PanelLayout.auto);
     foldersFirst = s['foldersFirst'] ?? true;
@@ -195,6 +204,7 @@ class Store extends ChangeNotifier {
         'settings': {
           'theme': themeMode.name,
           'seed': seed,
+          'themeId': themeId,
           'lang': language,
           'layout': layout.name,
           'foldersFirst': foldersFirst,
