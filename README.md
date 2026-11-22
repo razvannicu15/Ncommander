@@ -18,6 +18,25 @@ Manager de fișiere cu **două panouri** pentru **Android**, în stilul Total Co
 - Volume (memorie internă, card SD, USB) cu spațiu liber, foldere uzuale, favorite.
 - Proprietăți: mărime recursivă, conținut, dată, permisiuni.
 - Panourile se reîmprospătează singure când se schimbă fișierele.
+- Vizualizare **tabel** (Nume / Mărime / Dată, antet sortabil) sau listă pe două rânduri.
+- **Căutare avansată**: mască, tip, mărime, dată, text în conținut.
+
+## Rețea și cloud
+
+Meniu ☰ › **Adaugă conexiune**. Conexiunea se deschide ca un volum în oricare panou; copierea / mutarea merg în orice direcție (telefon ↔ FTP ↔ Drive ↔ OneDrive).
+
+- **FTP / FTPS**: server, port, utilizator (gol = anonim), parolă, folder de pornire, TLS explicit (sau implicit pe portul 990). Butonul *Testează* verifică setările.
+- **Google Drive** — configurare unică în [Google Cloud Console](https://console.cloud.google.com/):
+  1. Proiect nou → *APIs & Services* → activează **Google Drive API**.
+  2. *OAuth consent screen*: External, adaugă-ți adresa Gmail la *Test users*.
+  3. *Credentials* → *Create credentials* → *OAuth client ID* → tip **Android**: package `ro.noraz.ncommander`, SHA-1 `B9:4A:AA:16:8C:68:8F:72:3B:9F:49:A4:3B:08:63:8B:81:01:1D:B6`.
+  4. În aplicație: Adaugă conexiune → Google Drive → alegi contul.
+- **OneDrive** — configurare unică în [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade):
+  1. *New registration*, conturi: **Accounts in any organizational directory and personal Microsoft accounts**.
+  2. *Authentication* → *Add a platform* → **Mobile and desktop applications** → redirect URI personalizat `ncommander://auth`; *Allow public client flows* = Yes.
+  3. Copiezi **Application (client) ID** și îl lipești în aplicație la prima conexiune OneDrive.
+
+Ștergerea pe Drive / OneDrive trimite fișierele în coșul din cloud.
 
 ## Build
 

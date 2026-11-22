@@ -180,6 +180,8 @@ class _PanelViewState extends State<PanelView> {
               },
             ),
             Expanded(child: _crumbBar(cs)),
+            // In the table the column header sorts; the button is for the list view.
+            if (!store.table)
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: tr('Sortare', 'Sort'),
@@ -324,6 +326,7 @@ class _PanelViewState extends State<PanelView> {
         item(PanelAction.newTab, Icons.tab_rounded, tr('Tab nou', 'New tab')),
         if (p.tabs.length > 1) item(PanelAction.closeTab, Icons.tab_unselected_rounded, tr('Închide tab-ul', 'Close tab')),
         const PopupMenuDivider(),
+        item(PanelAction.sort, Icons.sort_rounded, tr('Sortare', 'Sort')),
         item(PanelAction.filter, Icons.filter_alt_outlined, tr('Filtru rapid', 'Quick filter'), checked: p.filtering),
         item(PanelAction.hidden, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), checked: store.showHidden),
         if (!p.remote) item(PanelAction.search, Icons.search_rounded, tr('Caută aici', 'Search here')),
