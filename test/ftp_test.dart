@@ -35,6 +35,7 @@ void serverTests(Conn conn) {
   late FtpVfs v;
 
   setUpAll(() {
+    store.language = 'ro';
     setLanguage('ro');
     store.conns.add(conn);
     v = vfsFor(conn.root)! as FtpVfs;

@@ -450,7 +450,13 @@ class FtpClient {
     return out;
   }
 
-  Future<List<int>> _dataCommand(String c) => _transfer(() => _dataCommand0(c));
+  /// A listing is small: on an encrypted channel it must finish within
+  /// seconds, otherwise the server doesn't do TLS data and we switch to clear.
+  Future<List<int>> _dataCommand(String c) => _transfer(() {
+        final f = _dataCommand0(c);
+        if (!_encData) return f;
+        return f.timeout(const Duration(seconds: 7), onTimeout: () => throw const TlsDataException());
+      });
 
   Future<List<int>> _dataCommand0(String c) async {
     final d = await _data();
