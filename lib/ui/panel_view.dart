@@ -119,7 +119,7 @@ class _PanelViewState extends State<PanelView> {
     });
   }
 
-  bool get _showParent => store.showParent && !p.atRoot && p.filter.isEmpty;
+  bool get _showParent => store.showParent && !p.atRoot && !p.atVolumeRoot && p.filter.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -516,8 +516,8 @@ class _PanelViewState extends State<PanelView> {
   Widget _footer(ColorScheme cs) {
     final style = TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]);
     final left = p.hasSelection
-        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'} · ${fmtSize(p.selectedBytes)}',
-            '${p.selected.length} selected · ${fmtSize(p.selectedBytes)}')
+        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'}', '${p.selected.length} selected') +
+            (p.selectedBytes > 0 ? ' · ${fmtSize(p.selectedBytes)}' : '')
         : [
             if (p.dirCount > 0) foldersText(p.dirCount),
             if (p.fileCount > 0) filesText(p.fileCount),

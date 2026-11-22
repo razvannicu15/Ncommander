@@ -79,6 +79,9 @@ class Panel extends ChangeNotifier {
   SortOrder get sort => tab.sort;
 
   bool get atRoot => path == '/';
+
+  /// Top of internal storage / SD card: nothing useful above it.
+  bool get atVolumeRoot => volumes.of(path)?.path == path;
   bool get hasSelection => selected.isNotEmpty;
 
   List<Entry> get selectedEntries => entries.where((e) => selected.contains(e.path)).toList();

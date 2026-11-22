@@ -473,8 +473,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       cur.toggleFiltering();
       return;
     }
-    final v = volumes.of(cur.path);
-    if (!cur.atRoot && (v == null || v.path != cur.path)) {
+    if (!cur.atRoot && !cur.atVolumeRoot) {
       cur.up();
       return;
     }
