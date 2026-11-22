@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 class Volume {
@@ -62,4 +64,33 @@ class Native {
       _call<Uint8List>('thumb', {'path': path, 'kind': kind, 'size': size});
 
   static Future<void> copyText(String text) => Clipboard.setData(ClipboardData(text: text));
+
+  static final _redirects = StreamController<String>.broadcast();
+
+  /// "ncommander://auth?..." links coming back from a browser sign-in.
+  static Stream<String> get redirects => _redirects.stream;
+
+  static void init() {
+    _ch.setMethodCallHandler((call) async {
+      if (call.method == 'redirect' && call.arguments is String) _redirects.add(call.arguments as String);
+      return null;
+    });
+  }
+
+  static Future<void> openUrl(String url) => _call('openUrl', url);
+
+  /// Google Drive access token. With [interactive] the account picker /
+  /// consent screen may show; without it null means "needs the user".
+  static Future<String?> googleToken(String account, {required bool interactive}) async {
+    try {
+      return await _ch.invokeMethod<String>('googleToken', {'account': account, 'interactive': interactive});
+    } on PlatformException catch (e) {
+      if (!interactive) return null;
+      throw Exception(e.message ?? e.code);
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  static Future<void> googleClearToken(String token) => _call('googleClearToken', token);
 }

@@ -21,6 +21,8 @@ void main() {
       '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>',
       '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>',
       '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>',
+      '<uses-permission android:name="android.permission.INTERNET"/>',
+      '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>',
     ];
     final block = perms.where((p) => !s.contains(p.split('"')[1])).map((p) => '    $p\n').join();
     if (block.isNotEmpty) {
@@ -41,6 +43,16 @@ void main() {
                 android:resource="@xml/file_paths"/>
         </provider>
     </application>''');
+    }
+    // OneDrive sign-in comes back to ncommander://auth
+    if (!s.contains('android:scheme="ncommander"')) {
+      s = s.replaceFirst('</activity>', '''    <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="ncommander" android:host="auth"/>
+            </intent-filter>
+        </activity>''');
     }
     return s.replaceFirst(RegExp(r'android:label="[^"]*"'), 'android:label="Ncommander"');
   });
@@ -69,7 +81,7 @@ void main() {
       s = s.replaceFirst('android {', 'android {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }');
     }
     if (!s.contains('androidx.core:core')) {
-      s = '$s\ndependencies {\n    implementation("androidx.core:core-ktx:1.13.1")\n}\n';
+      s = '$s\ndependencies {\n    implementation("androidx.core:core-ktx:1.13.1")\n    implementation("com.google.android.gms:play-services-auth:21.3.0")\n}\n';
     }
     return s;
   });

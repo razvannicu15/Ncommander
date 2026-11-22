@@ -17,7 +17,7 @@ void write(String rel, [String text = 'x']) {
 }
 
 FileOps ops([ConflictAction a = ConflictAction.overwrite, bool all = true]) =>
-    FileOps((_, __, ___) async => ConflictAnswer(a, forAll: all));
+    FileOps((_) async => ConflictAnswer(a, forAll: all));
 
 void main() {
   setUp(() {

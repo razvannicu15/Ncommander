@@ -8,13 +8,16 @@ import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import 'connections.dart';
 
 /// Storage volumes, common folders and bookmarks.
 class LocationsDrawer extends StatefulWidget {
-  const LocationsDrawer({super.key, required this.panel, required this.onGo, required this.onSettings});
+  const LocationsDrawer({super.key, required this.panel, required this.onGo, required this.onSettings, required this.onAddConn, required this.onConnMenu});
   final Panel panel;
   final void Function(String path) onGo;
   final VoidCallback onSettings;
+  final VoidCallback onAddConn;
+  final void Function(Conn c, String action) onConnMenu;
 
   @override
   State<LocationsDrawer> createState() => _LocationsDrawerState();
@@ -45,7 +48,7 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
     ].where((c) => Directory(join(home, c.$1)).existsSync()).toList();
 
     Widget item(IconData icon, String label, String path, {String? sub, Widget? trailing, VoidCallback? onLong}) {
-      final on = cur == path;
+      final on = cur == path || (isRemote(path) && path == rootOf(path) && rootOf(cur) == path);
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
         child: ListTile(
@@ -82,6 +85,32 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
         ),
         head(tr('Stocare', 'Storage')),
         for (final v in volumes.value) _volume(v, cs, cur),
+        head(tr('Rețea și cloud', 'Network & cloud')),
+        for (final c in store.conns)
+          item(
+            connIcon(c.type),
+            c.name,
+            c.root,
+            sub: connSubtitle(c),
+            trailing: PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, size: 20),
+              onSelected: (a) => widget.onConnMenu(c, a),
+              itemBuilder: (_) => [
+                if (c.type == ConnType.ftp) PopupMenuItem(value: 'edit', child: Text(tr('Editează', 'Edit'))),
+                PopupMenuItem(value: 'remove', child: Text(tr('Elimină', 'Remove'))),
+              ],
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+          child: ListTile(
+            dense: true,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            leading: Icon(Icons.add_rounded, color: cs.primary),
+            title: Text(tr('Adaugă conexiune', 'Add connection'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: cs.primary)),
+            onTap: widget.onAddConn,
+          ),
+        ),
         if (common.isNotEmpty) head(tr('Foldere', 'Folders')),
         for (final c in common) item(c.$2, c.$3, join(home, c.$1)),
         if (store.bookmarks.isNotEmpty) head(tr('Favorite', 'Bookmarks')),
@@ -111,7 +140,7 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
   }
 
   Widget _volume(Volume v, ColorScheme cs, String cur) {
-    final on = volumes.of(cur)?.path == v.path;
+    final on = !isRemote(cur) && volumes.of(cur)?.path == v.path;
     final used = v.total > 0 ? 1 - v.free / v.total : 0.0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),

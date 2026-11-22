@@ -217,7 +217,7 @@ void main() {
     await shot(t, '13_properties');
 
     // Browsing inside a ZIP.
-    await t.runAsync(() => FileOps((_, __, ___) async => const ConflictAnswer(ConflictAction.overwrite))
+    await t.runAsync(() => FileOps((_) async => const ConflictAnswer(ConflictAction.overwrite))
         .run(Job(JobKind.zip, ['$home/Documents', '$home/Download/notite.txt', '$home/Download/config.json'], target: '$home/Download', zipName: 'proiect.zip')));
     await t.pumpWidget(const SizedBox());
     await t.runAsync(() async {

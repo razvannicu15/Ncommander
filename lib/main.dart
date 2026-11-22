@@ -10,6 +10,7 @@ import 'ui/commander_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  Native.init();
   await store.load();
   await volumes.refresh();
   accessGranted = await Native.hasAccess();

@@ -11,6 +11,8 @@ class Entry {
     required this.modified,
     this.isLink = false,
     this.mode = 0,
+    this.id,
+    this.mime,
   });
 
   final String path;
@@ -20,6 +22,10 @@ class Entry {
   final DateTime modified;
   final bool isLink;
   final int mode;
+
+  /// Cloud file ID and type (Google Drive / OneDrive).
+  final String? id;
+  final String? mime;
 
   bool get hidden => name.startsWith('.');
   String get ext => isDir ? '' : extOf(name);

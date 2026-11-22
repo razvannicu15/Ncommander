@@ -9,8 +9,11 @@ import '../core/i18n.dart';
 import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
+import '../services/remote_ops.dart';
+import '../services/vfs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import 'connections.dart';
 import 'dialogs.dart';
 import 'drawer.dart';
 import 'editor_page.dart';
@@ -63,7 +66,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   PanelSaved? _valid(PanelSaved? s) {
     if (s == null) return null;
     for (final t in s.tabs) {
-      if (!Directory(t.path).existsSync()) t.path = volumes.primary;
+      final ok = isRemote(t.path) ? connOf(t.path) != null : Directory(t.path).existsSync();
+      if (!ok) t.path = volumes.primary;
     }
     return s;
   }
@@ -118,6 +122,10 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       await cur.go(e.path);
       return;
     }
+    if (isRemote(e.path)) {
+      await _openRemote(e);
+      return;
+    }
     final k = e.kind;
     if (k == Kind.archive && e.ext == 'zip') {
       await _zipSheet(e);
@@ -129,6 +137,79 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     } else {
       final ok = await Native.open(e.path, k.mimeFor(e.name));
       if (!ok && mounted) await _noApp(e);
+    }
+  }
+
+  /// Downloads to the cache with a progress dialog; returns the local copy.
+  Future<String?> _fetch(Entry e) async {
+    var cancelled = false;
+    var done = 0;
+    late StateSetter setD;
+    final nav = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        setD = set;
+        return AlertDialog(
+          title: Text(e.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18)),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            LinearProgressIndicator(value: e.size > 0 ? (done / e.size).clamp(0.0, 1.0) : null),
+            const SizedBox(height: 8),
+            Text(e.size > 0 ? '${fmtSize(done)} / ${fmtSize(e.size)}' : fmtSize(done),
+                style: const TextStyle(fontSize: 12.5, fontFeatures: [FontFeature.tabularFigures()])),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () {
+                cancelled = true;
+                Navigator.pop(ctx);
+              },
+              child: Text(tr('Anulează', 'Cancel')),
+            ),
+          ],
+        );
+      }),
+    );
+    try {
+      var last = DateTime(0);
+      final path = await fetchToCache(e, onBytes: (d) {
+        done += d;
+        final now = DateTime.now();
+        if (now.difference(last).inMilliseconds > 100) {
+          last = now;
+          try {
+            setD(() {});
+          } catch (_) {}
+        }
+      }, cancelled: () => cancelled);
+      if (!cancelled) nav.pop();
+      return cancelled ? null : path;
+    } catch (err) {
+      if (!cancelled) nav.pop();
+      if (!cancelled && mounted) toast(context, remoteError(err), icon: Icons.error_outline);
+      return null;
+    }
+  }
+
+  Future<void> _openRemote(Entry e, {bool chooser = false}) async {
+    final path = await _fetch(e);
+    if (path == null || !mounted) return;
+    final name = nameOf(path);
+    final k = kindOf(name);
+    final local = Entry(path: path, name: name, isDir: false, size: e.size, modified: e.modified);
+    if (chooser) {
+      await Native.open(path, k.mimeFor(name), chooser: true);
+    } else if (k == Kind.archive && extOf(name) == 'zip') {
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ZipPage(path: path, extractTo: other.remote ? volumes.primary : other.path, onExtract: runner.add)));
+    } else if (k == Kind.image && extOf(name) != 'svg') {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImagePage(images: [local], start: 0)));
+    } else if (isTextKind(k)) {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: path)));
+    } else {
+      final ok = await Native.open(path, k.mimeFor(name));
+      if (!ok && mounted) await _noApp(local);
     }
   }
 
@@ -167,6 +248,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
             onTap: () => Navigator.pop(ctx, 'named'),
           ),
           ListTile(leading: const Icon(Icons.move_down_rounded), title: Text(tr('Dezarhivează aici', 'Extract here')), onTap: () => Navigator.pop(ctx, 'here')),
+          if (!other.remote)
           ListTile(
             leading: const Icon(Icons.call_split_rounded),
             title: Text(tr('Dezarhivează în celălalt panou', 'Extract to other panel')),
@@ -181,7 +263,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (!mounted || r == null) return;
     switch (r) {
       case 'browse':
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ZipPage(path: e.path, extractTo: other.path, onExtract: runner.add)));
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ZipPage(path: e.path, extractTo: other.remote ? here : other.path, onExtract: runner.add)));
       case 'named':
         runner.add(Job(JobKind.extract, [e.path], target: named));
       case 'here':
@@ -202,7 +284,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (items.isEmpty) return;
     final t = await askTarget(context, move: move, items: items, target: other.path);
     if (t == null || t.isEmpty) return;
-    runner.add(Job(move ? JobKind.move : JobKind.copy, items.map((e) => e.path).toList(), target: t));
+    runner.add(Job(move ? JobKind.move : JobKind.copy, items.map((e) => e.path).toList(), target: t, items: items));
     cur.clearSelection();
   }
 
@@ -219,6 +301,17 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         exists: (v) => FileSystemEntity.typeSync(join(dir, v), followLinks: false) != FileSystemEntityType.notFound &&
             v.toLowerCase() != e.name.toLowerCase());
     if (n == null || n == e.name) return;
+    final v = vfsFor(e.path);
+    if (v != null) {
+      try {
+        await v.rename(e, n);
+        await cur.load();
+        cur.focus(n);
+      } catch (err) {
+        if (mounted) toast(context, remoteError(err), icon: Icons.error_outline);
+      }
+      return;
+    }
     try {
       final to = join(dir, n);
       if (e.isDir) {
@@ -239,6 +332,24 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (r == null) return;
     final (name, folder) = r;
     final path = join(cur.path, name);
+    final v = vfsFor(cur.path);
+    if (v != null) {
+      try {
+        if (folder) {
+          await v.mkdir(cur.path, name);
+        } else {
+          final tmp = File('${Directory.systemTemp.path}/nc_empty_${DateTime.now().microsecondsSinceEpoch}');
+          await tmp.writeAsBytes(const []);
+          await v.upload(tmp.path, cur.path, name, (_) {}, () => false);
+          await tmp.delete();
+        }
+        await cur.load();
+        cur.focus(name);
+      } catch (err) {
+        if (mounted) toast(context, remoteError(err), icon: Icons.error_outline);
+      }
+      return;
+    }
     try {
       if (folder) {
         await Directory(path).create();
@@ -258,14 +369,15 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   Future<void> delete() async {
     final items = _sel;
     if (items.isEmpty) return;
-    if (store.confirmDelete && !await confirmDelete(context, items)) return;
-    runner.add(Job(JobKind.delete, items.map((e) => e.path).toList()));
+    final bin = cur.conn != null && cur.conn!.type != ConnType.ftp;
+    if (store.confirmDelete && !await confirmDelete(context, items, bin: bin)) return;
+    runner.add(Job(JobKind.delete, items.map((e) => e.path).toList(), items: items));
     cur.clearSelection();
   }
 
   Future<void> zip() async {
     final items = _sel;
-    if (items.isEmpty) return;
+    if (items.isEmpty || cur.remote) return;
     final base = items.length == 1 ? stemOf(items.first.name) : nameOf(cur.path);
     final n = await askName(context,
         title: tr('Arhivează ZIP', 'Create ZIP'),
@@ -277,8 +389,17 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     cur.clearSelection();
   }
 
-  void share() {
-    final files = _sel.where((e) => !e.isDir).toList();
+  Future<void> share() async {
+    var files = _sel.where((e) => !e.isDir).toList();
+    if (cur.remote && files.isNotEmpty) {
+      final local = <Entry>[];
+      for (final e in files) {
+        final p = await _fetch(e);
+        if (p == null) return;
+        local.add(Entry(path: p, name: nameOf(p), isDir: false, size: e.size, modified: e.modified));
+      }
+      files = local;
+    }
     if (files.isEmpty) {
       toast(context, tr('Selectează fișiere, nu foldere', 'Select files, not folders'));
       return;
@@ -326,7 +447,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       case PanelAction.invert:
         p.invert();
       case PanelAction.search:
-        await _search(p);
+        if (!p.remote) await _search(p);
       case PanelAction.bookmark:
         store.toggleBookmark(p.path, p.title);
         if (mounted) {
@@ -372,7 +493,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         );
 
     final tiles = <Widget>[
-      if (has) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
+      if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
       if (has) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
       if (single != null && !single.isDir) tile('with', Icons.open_in_new_rounded, tr('Deschide cu', 'Open with')),
       if (has) tile('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties')),
@@ -385,7 +506,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       tile('mask', Icons.rule_rounded, tr('După mască', 'By mask')),
       if (has) tile('invert', Icons.flip_rounded, tr('Inversează', 'Invert')),
       if (has) tile('none', Icons.deselect_rounded, tr('Deselectează', 'Deselect')),
-      if (!has) tile('search', Icons.search_rounded, tr('Caută', 'Search')),
+      if (!has && !cur.remote) tile('search', Icons.search_rounded, tr('Caută', 'Search')),
       if (!has) tile('swap', Icons.swap_horiz_rounded, tr('Schimbă panourile', 'Swap panels')),
       if (!has) tile('same', Icons.drag_handle_rounded, tr('Același folder', 'Same folder')),
       tile('settings', Icons.settings_outlined, tr('Setări', 'Settings')),
@@ -414,9 +535,13 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       case 'zip':
         await zip();
       case 'share':
-        share();
+        await share();
       case 'with':
-        await Native.open(single!.path, single.kind.mimeFor(single.name), chooser: true);
+        if (single!.path.contains('://')) {
+          await _openRemote(single, chooser: true);
+        } else {
+          await Native.open(single.path, single.kind.mimeFor(single.name), chooser: true);
+        }
       case 'props':
         await showProperties(context, items);
       case 'path':
@@ -507,6 +632,26 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           onSettings: () {
             Navigator.of(context).pop();
             openSettings();
+          },
+          onAddConn: () async {
+            Navigator.of(context).pop();
+            final c = await addConnection(context);
+            if (c != null) await cur.go(c.root);
+          },
+          onConnMenu: (c, action) async {
+            Navigator.of(context).pop();
+            if (action == 'edit') {
+              final e = await editFtp(context, c);
+              if (e != null) {
+                for (final p in panels) {
+                  if (rootOf(p.path) == c.root) p.load();
+                }
+              }
+            } else if (action == 'remove' && await confirmRemoveConn(context, c)) {
+              for (final p in panels) {
+                if (rootOf(p.path) == c.root) await p.go(volumes.primary);
+              }
+            }
           },
         ),
         body: SafeArea(

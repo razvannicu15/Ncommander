@@ -7,9 +7,30 @@ import 'package:archive/archive_io.dart';
 import '../core/format.dart';
 import '../core/i18n.dart';
 import '../models/entry.dart';
+import 'remote_ops.dart';
 
-/// Path helpers (Android paths are always POSIX).
+/// Path helpers. Local paths are POSIX; remote ones look like
+/// "ftp://<connId>/folder/file" (also gdrive:// and onedrive://).
+bool isRemote(String path) => path.contains('://');
+
+/// "ftp://id" for "ftp://id/a/b"; "/" for local paths.
+String rootOf(String path) {
+  final i = path.indexOf('://');
+  if (i < 0) return '/';
+  final j = path.indexOf('/', i + 3);
+  return j < 0 ? path : path.substring(0, j);
+}
+
+/// Path inside the remote location: "/a/b" (or "" at its root).
+String relOf(String path) => isRemote(path) ? path.substring(rootOf(path).length) : path;
+
 String parentOf(String path) {
+  if (isRemote(path)) {
+    final root = rootOf(path);
+    if (path.length <= root.length + 1) return root;
+    final i = path.lastIndexOf('/');
+    return i <= root.length ? root : path.substring(0, i);
+  }
   if (path == '/' || path.isEmpty) return '/';
   final p = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
   final i = p.lastIndexOf('/');
@@ -17,6 +38,7 @@ String parentOf(String path) {
 }
 
 String nameOf(String path) {
+  if (isRemote(path) && path == rootOf(path)) return '';
   final p = path.endsWith('/') && path.length > 1 ? path.substring(0, path.length - 1) : path;
   final i = p.lastIndexOf('/');
   return i < 0 ? p : p.substring(i + 1);
@@ -110,22 +132,50 @@ enum JobKind { copy, move, delete, zip, extract }
 
 enum ConflictAction { overwrite, skip, rename, cancel }
 
+/// What the conflict dialog shows: the incoming item vs the existing one.
+class ConflictInfo {
+  ConflictInfo(this.name, {this.srcSize, this.srcTime, this.dstSize, this.dstTime, this.dstIsDir = false});
+  final String name;
+  final int? srcSize, dstSize;
+  final DateTime? srcTime, dstTime;
+  final bool dstIsDir;
+
+  static ConflictInfo local(String src, String dst) {
+    FileStat? a, b;
+    try {
+      a = FileStat.statSync(src);
+      b = FileStat.statSync(dst);
+    } catch (_) {}
+    final aFile = a != null && a.type != FileSystemEntityType.directory && a.type != FileSystemEntityType.notFound;
+    final bFile = b != null && b.type != FileSystemEntityType.directory && b.type != FileSystemEntityType.notFound;
+    return ConflictInfo(nameOf(dst),
+        srcSize: aFile ? a.size : null,
+        srcTime: a?.modified,
+        dstSize: bFile ? b.size : null,
+        dstTime: b?.modified,
+        dstIsDir: b?.type == FileSystemEntityType.directory);
+  }
+}
+
 class ConflictAnswer {
   const ConflictAnswer(this.action, {this.forAll = false});
   final ConflictAction action;
   final bool forAll;
 }
 
-typedef ConflictAsker = Future<ConflictAnswer> Function(String source, String target, bool targetIsDir);
+typedef ConflictAsker = Future<ConflictAnswer> Function(ConflictInfo info);
 
 class JobCancelled implements Exception {}
 
 /// A running file operation; the UI listens to it for progress.
 class Job {
-  Job(this.kind, this.sources, {this.target = '', this.zipName = ''});
+  Job(this.kind, this.sources, {this.target = '', this.zipName = '', this.items = const []});
 
   final JobKind kind;
   final List<String> sources;
+
+  /// The selected entries (remote ones carry their cloud IDs).
+  final List<Entry> items;
   final String target;
   final String zipName;
 
@@ -157,7 +207,7 @@ class Job {
     return null;
   }
 
-  void _check() {
+  void check() {
     if (cancelled) throw JobCancelled();
   }
 
@@ -179,6 +229,11 @@ class FileOps {
   Future<void> run(Job job) async {
     _all = null;
     try {
+      final remote = isRemote(job.target) || job.sources.any(isRemote);
+      if (remote && job.kind != JobKind.zip && job.kind != JobKind.extract) {
+        await RemoteOps(job, _askRemote).run();
+        return;
+      }
       switch (job.kind) {
         case JobKind.copy:
         case JobKind.move:
@@ -197,6 +252,17 @@ class FileOps {
     }
   }
 
+  /// Conflict question for remote transfers (same "for all" memory).
+  Future<ConflictAction> _askRemote(ConflictInfo info) async {
+    var a = _all;
+    if (a == null) {
+      final ans = await ask(info);
+      if (ans.forAll) _all = ans;
+      a = ans;
+    }
+    return a.action;
+  }
+
   Future<void> _transfer(Job job) async {
     final move = job.kind == JobKind.move;
     // Moving a folder onto itself or inside itself would never end.
@@ -213,7 +279,7 @@ class FileOps {
     await Directory(job.target).create(recursive: true);
 
     for (final src in job.sources) {
-      job._check();
+      job.check();
       final sameDir = parentOf(src) == job.target;
       var dst = join(job.target, nameOf(src));
       if (sameDir) {
@@ -279,7 +345,7 @@ class FileOps {
   Future<String?> _resolve(String src, String dst, bool dstIsDir) async {
     var a = _all;
     if (a == null) {
-      final ans = await ask(src, dst, dstIsDir);
+      final ans = await ask(ConflictInfo.local(src, dst));
       if (ans.forAll) _all = ans;
       a = ans;
     }
@@ -297,7 +363,7 @@ class FileOps {
   }
 
   Future<void> _copyAny(Job job, String src, String dst, {bool move = false}) async {
-    job._check();
+    job.check();
     final type = FileSystemEntity.typeSync(src, followLinks: false);
     if (type == FileSystemEntityType.directory) {
       if (FileSystemEntity.typeSync(dst, followLinks: false) == FileSystemEntityType.file) {
@@ -363,7 +429,7 @@ class FileOps {
       in_ = await File(src).open();
       out = await File(part).open(mode: FileMode.write);
       while (true) {
-        job._check();
+        job.check();
         final bytes = await in_.read(_chunk);
         if (bytes.isEmpty) break;
         await out.writeFrom(bytes);
@@ -413,7 +479,7 @@ class FileOps {
     job.totalFiles = job.sources.length;
     job.ping(force: true);
     for (final p in job.sources) {
-      job._check();
+      job.check();
       job.current = nameOf(p);
       job.ping();
       try {

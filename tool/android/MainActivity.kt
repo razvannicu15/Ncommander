@@ -1,6 +1,7 @@
 package ro.noraz.ncommander
 
 import android.Manifest
+import android.accounts.Account
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
@@ -28,6 +29,10 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Size
 import androidx.core.content.FileProvider
+import com.google.android.gms.auth.GoogleAuthUtil
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -39,10 +44,15 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val pool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
+    private var channel: MethodChannel? = null
+    private var pendingGoogle: MethodChannel.Result? = null
+    private val rcGoogle = 4711
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ncommander/native").setMethodCallHandler { call, result ->
+        val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ncommander/native")
+        channel = ch
+        ch.setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
                     "hasAccess" -> result.success(hasAccess())
@@ -80,12 +90,73 @@ class MainActivity : FlutterActivity() {
                             main.post { result.success(bytes) }
                         }
                     }
+                    "openUrl" -> {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.arguments as String)))
+                        result.success(null)
+                    }
+                    "googleToken" -> googleToken(call.argument<String>("account") ?: "", call.argument<Boolean>("interactive") == true, result)
+                    "googleClearToken" -> {
+                        val t = call.arguments as String
+                        pool.execute {
+                            try { GoogleAuthUtil.clearToken(applicationContext, t) } catch (_: Exception) {}
+                            main.post { result.success(null) }
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
                 result.error("err", e.message, null)
             }
         }
+    }
+
+    // ------------------------------------------------------- cloud sign-in
+
+    private fun googleToken(account: String, interactive: Boolean, result: MethodChannel.Result) {
+        val b = AuthorizationRequest.builder().setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/drive")))
+        if (account.contains("@")) b.setAccount(Account(account, "com.google"))
+        Identity.getAuthorizationClient(this).authorize(b.build())
+            .addOnSuccessListener { r ->
+                if (r.hasResolution()) {
+                    if (!interactive) {
+                        result.success(null)
+                        return@addOnSuccessListener
+                    }
+                    try {
+                        pendingGoogle?.success(null)
+                        pendingGoogle = result
+                        @Suppress("DEPRECATION")
+                        startIntentSenderForResult(r.pendingIntent!!.intentSender, rcGoogle, null, 0, 0, 0, null)
+                    } catch (e: Exception) {
+                        pendingGoogle = null
+                        result.error("auth", e.message, null)
+                    }
+                } else {
+                    result.success(r.accessToken)
+                }
+            }
+            .addOnFailureListener { e -> result.error("auth", e.message ?: "Google", null) }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != rcGoogle) return
+        val res = pendingGoogle ?: return
+        pendingGoogle = null
+        try {
+            val r = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data)
+            res.success(r.accessToken)
+        } catch (e: Exception) {
+            res.error("auth", e.message ?: "cancelled", null)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val d = intent.data ?: return
+        if (d.scheme == "ncommander") channel?.invokeMethod("redirect", d.toString())
     }
 
     // ------------------------------------------------------------- access

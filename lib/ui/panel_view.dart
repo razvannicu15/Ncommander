@@ -300,7 +300,7 @@ class _PanelViewState extends State<PanelView> {
         const PopupMenuDivider(),
         item(PanelAction.filter, Icons.filter_alt_outlined, tr('Filtru rapid', 'Quick filter'), checked: p.filtering),
         item(PanelAction.hidden, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), checked: store.showHidden),
-        item(PanelAction.search, Icons.search_rounded, tr('Caută aici', 'Search here')),
+        if (!p.remote) item(PanelAction.search, Icons.search_rounded, tr('Caută aici', 'Search here')),
         const PopupMenuDivider(),
         item(PanelAction.selectAll, Icons.select_all_rounded, tr('Selectează tot', 'Select all')),
         item(PanelAction.selectMask, Icons.rule_rounded, tr('Selectează după mască', 'Select by mask')),

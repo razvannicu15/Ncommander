@@ -12,6 +12,75 @@ enum PanelLayout { auto, sideBySide, stacked }
 /// Theme colours offered in Settings (no pink unless asked for).
 const themeColors = <int>[0xFFD9822B, 0xFF2B5CE6, 0xFF0E7C66, 0xFF3F51B5, 0xFF6750A4, 0xFF00838F, 0xFFB3261E, 0xFF5D6B7A];
 
+enum ConnType { ftp, gdrive, onedrive }
+
+/// A saved network / cloud location. Lives in the app's private storage.
+class Conn {
+  Conn({
+    required this.id,
+    required this.type,
+    required this.name,
+    this.host = '',
+    this.port = 21,
+    this.user = '',
+    this.password = '',
+    this.tls = false,
+    this.folder = '/',
+    this.account = '',
+    this.token = '',
+  });
+
+  final String id;
+  final ConnType type;
+  String name;
+  String host;
+  int port;
+  String user;
+  String password;
+  bool tls;
+  String folder;
+
+  /// Cloud account (e-mail / display name).
+  String account;
+
+  /// OneDrive refresh token.
+  String token;
+
+  String get root => '${type.name}://$id';
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.name,
+        'name': name,
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'tls': tls,
+        'folder': folder,
+        'account': account,
+        'token': token,
+      };
+
+  static Conn? fromJson(Map j) {
+    final t = ConnType.values.where((v) => v.name == j['type']).firstOrNull;
+    if (t == null || j['id'] is! String) return null;
+    return Conn(
+      id: j['id'] as String,
+      type: t,
+      name: (j['name'] as String?) ?? '',
+      host: (j['host'] as String?) ?? '',
+      port: (j['port'] as int?) ?? 21,
+      user: (j['user'] as String?) ?? '',
+      password: (j['password'] as String?) ?? '',
+      tls: j['tls'] == true,
+      folder: (j['folder'] as String?) ?? '/',
+      account: (j['account'] as String?) ?? '',
+      token: (j['token'] as String?) ?? '',
+    );
+  }
+}
+
 class Bookmark {
   Bookmark(this.path, this.name);
   final String path;
@@ -58,6 +127,12 @@ class Store extends ChangeNotifier {
   double fontScale = 1.0;
 
   final List<Bookmark> bookmarks = [];
+  final List<Conn> conns = [];
+
+  /// Microsoft app (client) ID for OneDrive; the build can bake one in.
+  String onedriveClientId = const String.fromEnvironment('ONEDRIVE_CLIENT_ID');
+
+  Conn? conn(String id) => conns.where((c) => c.id == id).firstOrNull;
   PanelSaved? left, right;
   int activePanel = 0;
 
@@ -100,6 +175,11 @@ class Store extends ChangeNotifier {
       ..addAll(((j['bookmarks'] as List?) ?? [])
           .whereType<Map>()
           .map((b) => Bookmark(b['path'] as String, (b['name'] as String?) ?? '')));
+    conns
+      ..clear()
+      ..addAll(((j['conns'] as List?) ?? []).whereType<Map>().map(Conn.fromJson).whereType<Conn>());
+    final od = j['onedriveClientId'];
+    if (od is String && od.isNotEmpty) onedriveClientId = od;
     left = PanelSaved.fromJson(j['left']);
     right = PanelSaved.fromJson(j['right']);
     activePanel = ((j['activePanel'] as int?) ?? 0).clamp(0, 1);
@@ -122,6 +202,8 @@ class Store extends ChangeNotifier {
           'font': fontScale,
         },
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
+        'conns': conns.map((c) => c.toJson()).toList(),
+        'onedriveClientId': onedriveClientId,
         if (left != null) 'left': left!.toJson(),
         if (right != null) 'right': right!.toJson(),
         'activePanel': activePanel,

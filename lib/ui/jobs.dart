@@ -34,10 +34,11 @@ class JobRunner extends ChangeNotifier {
     final j = current = queue.removeAt(0);
     notifyListeners();
     _sub = j.changes.listen((_) => notifyListeners());
-    final ops = FileOps((src, dst, isDir) => askConflict(context(), src, dst, isDir));
+    final ops = FileOps((info) => askConflict(context(), info));
     await ops.run(j);
     await _sub?.cancel();
-    if (j.touched.isNotEmpty) Native.scan(j.touched.toSet().toList());
+    final local = j.touched.where((p) => !p.contains('://')).toSet().toList();
+    if (local.isNotEmpty) Native.scan(local);
     onDone(j);
     await _next();
   }

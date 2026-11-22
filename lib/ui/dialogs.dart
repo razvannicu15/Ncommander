@@ -143,7 +143,7 @@ Future<(String, bool)?> askNew(BuildContext context, String dir) {
   );
 }
 
-Future<bool> confirmDelete(BuildContext context, List<Entry> items) async {
+Future<bool> confirmDelete(BuildContext context, List<Entry> items, {bool bin = false}) async {
   final cs = Theme.of(context).colorScheme;
   final files = items.where((e) => !e.isDir).toList();
   final bytes = files.fold<int>(0, (s, e) => s + e.size);
@@ -175,8 +175,8 @@ Future<bool> confirmDelete(BuildContext context, List<Entry> items) async {
           style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
         ),
         const SizedBox(height: 4),
-        Text(tr('Nu există coș de gunoi.', 'There is no recycle bin.'),
-            style: TextStyle(color: cs.error, fontSize: 12.5, fontWeight: FontWeight.w600)),
+        Text(bin ? tr('Merge în coșul din cloud.', 'Goes to the cloud bin.') : tr('Nu există coș de gunoi.', 'There is no recycle bin.'),
+            style: TextStyle(color: bin ? cs.onSurfaceVariant : cs.error, fontSize: 12.5, fontWeight: FontWeight.w600)),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Anulează', 'Cancel'))),
@@ -192,17 +192,12 @@ Future<bool> confirmDelete(BuildContext context, List<Entry> items) async {
 }
 
 /// What to do when the target already exists.
-Future<ConflictAnswer> askConflict(BuildContext context, String source, String target, bool targetIsDir) async {
+Future<ConflictAnswer> askConflict(BuildContext context, ConflictInfo info) async {
   final cs = Theme.of(context).colorScheme;
-  FileStat? a, b;
-  try {
-    a = FileStat.statSync(source);
-    b = FileStat.statSync(target);
-  } catch (_) {}
   var all = false;
-  String sz(FileStat? s) => s == null || s.type == FileSystemEntityType.directory ? '—' : fmtSize(s.size);
-  String dt(FileStat? s) => s == null ? '—' : fmtListDate(s.modified);
-  final newer = a != null && b != null && a.modified.isAfter(b.modified);
+  String sz(int? v) => v == null ? '—' : fmtSize(v);
+  String dt(DateTime? d) => d == null ? '—' : fmtListDate(d);
+  final newer = info.srcTime != null && info.dstTime != null && info.srcTime!.isAfter(info.dstTime!);
 
   final r = await showDialog<ConflictAnswer>(
     context: context,
@@ -224,15 +219,15 @@ Future<ConflictAnswer> askConflict(BuildContext context, String source, String t
         icon: const Icon(Icons.difference_outlined),
         title: Text(tr('Există deja', 'Already exists')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(nameOf(target), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(info.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Table(
             columnWidths: const {0: FlexColumnWidth(1.1), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
             border: TableBorder(horizontalInside: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6)),
             children: [
               TableRow(children: [cell('', head: true), cell(tr('Nou', 'New'), head: false), cell(tr('Existent', 'Existing'))]),
-              TableRow(children: [cell(tr('Mărime', 'Size'), head: true), cell(sz(a)), cell(sz(b))]),
-              TableRow(children: [cell(tr('Modificat', 'Modified'), head: true), cell(dt(a), hi: newer), cell(dt(b), hi: !newer && a != null)]),
+              TableRow(children: [cell(tr('Mărime', 'Size'), head: true), cell(sz(info.srcSize)), cell(info.dstIsDir ? tr('folder', 'folder') : sz(info.dstSize))]),
+              TableRow(children: [cell(tr('Modificat', 'Modified'), head: true), cell(dt(info.srcTime), hi: newer), cell(dt(info.dstTime), hi: !newer && info.srcTime != null)]),
             ],
           ),
           const SizedBox(height: 6),
@@ -329,7 +324,13 @@ Future<SortOrder?> askSort(BuildContext context, SortOrder current) {
 /// Size, dates and counts for the selection (folders measured recursively).
 Future<void> showProperties(BuildContext context, List<Entry> items) async {
   final single = items.length == 1 ? items.first : null;
-  final measuring = measure(items.map((e) => e.path).toList());
+  final remote = items.any((e) => isRemote(e.path));
+  // Remote folders aren't walked (could be thousands of requests).
+  final measuring = remote
+      ? Future.value(TreeStats()
+        ..bytes = items.fold(0, (s, e) => s + (e.isDir ? 0 : e.size))
+        ..files = items.where((e) => !e.isDir).length)
+      : measure(items.map((e) => e.path).toList());
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -355,12 +356,13 @@ Future<void> showProperties(BuildContext context, List<Entry> items) async {
             builder: (ctx, s) {
               final st = s.data;
               final wait = tr('se calculează…', 'calculating…');
-              final vol = single == null ? null : volumes.of(single.path);
+              final vol = single == null || remote ? null : volumes.of(single.path);
+              final c = single == null ? null : connOf(single.path);
               final rows = <(String, String, bool)>[
-                if (single != null) (tr('Locație', 'Location'), parentOf(single.path), true),
+                if (single != null) (tr('Locație', 'Location'), remote ? '/${relOf(parentOf(single.path)).replaceFirst('/', '')}' : parentOf(single.path), true),
                 if (single != null && !single.isDir) (tr('Tip', 'Type'), single.ext.isEmpty ? '—' : single.ext.toUpperCase(), false),
                 (tr('Mărime', 'Size'), st == null ? wait : '${fmtSize(st.bytes)}  (${fmtBytesExact(st.bytes)} B)', false),
-                if (st != null && (st.dirs > 0 || items.length > 1))
+                if (st != null && !remote && (st.dirs > 0 || items.length > 1))
                   (
                     tr('Conține', 'Contains'),
                     '${filesText(st.files)}, ${foldersText((st.dirs - items.where((e) => e.isDir).length).clamp(0, 1 << 30))}',
@@ -370,6 +372,7 @@ Future<void> showProperties(BuildContext context, List<Entry> items) async {
                 if (single != null && single.mode != 0) (tr('Permisiuni', 'Permissions'), _modeString(single.mode), false),
                 if (single != null && single.isLink) (tr('Link către', 'Links to'), _linkTarget(single.path), true),
                 if (vol != null) (tr('Volum', 'Volume'), volumes.label(vol), false),
+                if (c != null) (tr('Conexiune', 'Connection'), c.name, false),
               ];
               return Group(children: [
                 for (var i = 0; i < rows.length; i++)

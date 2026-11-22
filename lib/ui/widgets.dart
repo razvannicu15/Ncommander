@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/file_types.dart';
 import '../models/entry.dart';
+import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
 
@@ -159,7 +160,7 @@ class EntryIcon extends StatelessWidget {
 
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final px = (size * dpr).round();
-    if (store.thumbnails && !e.isDir) {
+    if (store.thumbnails && !e.isDir && !isRemote(e.path)) {
       if (k == Kind.image && e.ext != 'svg' && e.size > 0) {
         base = ClipRRect(
           borderRadius: r,

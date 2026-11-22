@@ -8,6 +8,7 @@ import '../core/i18n.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import '../services/vfs.dart';
 import 'entry.dart';
 
 /// Storage volumes (internal, SD card, USB), refreshed on start and resume.
@@ -39,6 +40,12 @@ class Volumes extends ValueNotifier<List<Volume>> {
 }
 
 final volumes = Volumes();
+
+Conn? connOf(String path) {
+  if (!isRemote(path)) return null;
+  final root = rootOf(path);
+  return store.conn(root.substring(root.indexOf('://') + 3));
+}
 
 /// One side of the commander: tabs, listing, selection.
 class Panel extends ChangeNotifier {
@@ -81,7 +88,12 @@ class Panel extends ChangeNotifier {
   bool get atRoot => path == '/';
 
   /// Top of internal storage / SD card: nothing useful above it.
-  bool get atVolumeRoot => volumes.of(path)?.path == path;
+  bool get atVolumeRoot => isRemote(path) ? path == rootOf(path) : volumes.of(path)?.path == path;
+
+  bool get remote => isRemote(path);
+
+  /// Connection behind a remote path.
+  Conn? get conn => connOf(path);
   bool get hasSelection => selected.isNotEmpty;
 
   List<Entry> get selectedEntries => entries.where((e) => selected.contains(e.path)).toList();
@@ -98,10 +110,28 @@ class Panel extends ChangeNotifier {
       loading = true;
       notifyListeners();
     }
-    final r = await listDir(p);
-    if (id != _loadId) return;
-    _raw = r.entries;
-    error = r.error;
+    final v = vfsFor(p);
+    if (isRemote(p) && v == null) {
+      if (id != _loadId) return;
+      _raw = [];
+      error = tr('Conexiunea a fost ștearsă', 'The connection was deleted');
+    } else if (v != null) {
+      try {
+        final list = await v.list(p);
+        if (id != _loadId) return;
+        _raw = list;
+        error = null;
+      } catch (e) {
+        if (id != _loadId) return;
+        _raw = [];
+        error = remoteError(e);
+      }
+    } else {
+      final r = await listDir(p);
+      if (id != _loadId) return;
+      _raw = r.entries;
+      error = r.error;
+    }
     loading = false;
     if (!keepSelection) {
       selected.clear();
@@ -116,7 +146,16 @@ class Panel extends ChangeNotifier {
   }
 
   Future<void> _space(String p) async {
-    final (t, f) = await Native.space(p);
+    var (t, f) = (0, 0);
+    final v = vfsFor(p);
+    if (v != null) {
+      try {
+        final s = await v.space();
+        if (s != null) (t, f) = s;
+      } catch (_) {}
+    } else if (!isRemote(p)) {
+      (t, f) = await Native.space(p);
+    }
     if (p != path) return;
     if (t != total || f != free) {
       total = t;
@@ -145,7 +184,7 @@ class Panel extends ChangeNotifier {
   void _watchDir(String p) {
     _watch?.cancel();
     _watch = null;
-    if (!watchEnabled) return;
+    if (!watchEnabled || isRemote(p)) return;
     try {
       _watch = Directory(p).watch().listen((_) {
         _debounce?.cancel();
@@ -313,6 +352,16 @@ class Panel extends ChangeNotifier {
 
   /// "Memorie internă / Download / Telegram" style crumbs: (label, path).
   List<(String, String)> crumbs() {
+    if (remote) {
+      final root = rootOf(path);
+      final out = <(String, String)>[(conn?.name ?? '?', root)];
+      var cur = root;
+      for (final part in relOf(path).split('/').where((s) => s.isNotEmpty)) {
+        cur = join(cur, part);
+        out.add((part, cur));
+      }
+      return out;
+    }
     final v = volumes.of(path);
     final out = <(String, String)>[];
     String base;
@@ -334,12 +383,14 @@ class Panel extends ChangeNotifier {
 
   /// Title for a tab chip.
   String get title {
+    if (remote) return titleOf(tab);
     final v = volumes.of(path);
     if (v != null && v.path == path) return volumes.label(v);
     return path == '/' ? '/' : nameOf(path);
   }
 
   String titleOf(TabState t) {
+    if (isRemote(t.path)) return t.path == rootOf(t.path) ? (connOf(t.path)?.name ?? '?') : nameOf(t.path);
     final v = volumes.of(t.path);
     if (v != null && v.path == t.path) return volumes.label(v);
     return t.path == '/' ? '/' : nameOf(t.path);
