@@ -237,13 +237,16 @@ class _ThumbState extends State<_Thumb> {
 
 /// Icon in a tinted rounded square, or a real preview for media.
 class EntryIcon extends StatelessWidget {
-  const EntryIcon(this.e, {super.key, this.size = 36, this.selected = false, this.plain = false});
+  const EntryIcon(this.e, {super.key, this.size = 36, this.selected = false, this.plain = false, this.solid = false});
   final Entry e;
   final double size;
   final bool selected;
 
   /// Table rows: just the glyph, no tinted square.
   final bool plain;
+
+  /// Detailed rows: filled colour tile with a white glyph.
+  final bool solid;
 
   @override
   Widget build(BuildContext context) {
@@ -252,9 +255,17 @@ class EntryIcon extends StatelessWidget {
     final c = k.color(cs);
     final r = BorderRadius.circular(size * 0.28);
 
+    final dark = Theme.of(context).brightness == Brightness.dark;
     Widget base = plain
         ? SizedBox(width: size, height: size, child: Icon(k.icon, size: size * 0.86, color: c))
-        : Container(
+        : solid
+            ? Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(color: dark ? Color.alphaBlend(Colors.black26, c) : c, borderRadius: r),
+                child: Icon(k.icon, size: size * 0.52, color: Colors.white),
+              )
+            : Container(
             width: size,
             height: size,
             decoration: BoxDecoration(color: c.withValues(alpha: 0.13), borderRadius: r),

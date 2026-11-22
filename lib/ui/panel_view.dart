@@ -26,13 +26,37 @@ enum PanelAction {
   sameAsOther,
 }
 
-double rowHeight() => (store.table ? (store.compact ? 38.0 : 44.0) : (store.compact ? 48.0 : 58.0)) * store.fontScale;
+/// Fixed height of a compact (single-line) row; detailed rows size themselves.
+double rowHeight(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale((store.compact ? 38.0 : 44.0) * store.fontScale);
 
-/// Column widths of the table view for a panel [width]; the date column
-/// drops out when the panel is narrow (side by side on a phone).
-(double, double) tableCols(double width) {
-  final s = store.fontScale;
-  return (66 * s, width >= 330 ? 92 * s : 0);
+double _textW(BuildContext context, String t, double size) {
+  final tp = TextPainter(
+    text: TextSpan(text: t, style: TextStyle(fontSize: size, fontFeatures: const [FontFeature.tabularFigures()])),
+    textDirection: TextDirection.ltr,
+    textScaler: MediaQuery.textScalerOf(context),
+  )..layout();
+  return tp.width;
+}
+
+/// Compact view columns, measured with the phone's text size so "38,1 KB"
+/// never gets cut. The date drops out when the panel is too narrow.
+(double, double) tableCols(BuildContext context, double width) {
+  final f = 12.5 * store.fontScale;
+  final sizeW = _textW(context, '999,9 MB', f) + 12;
+  final dateW = _textW(context, '22.11.2026', f) + 14;
+  final icon = 12 + 24 * store.fontScale + 12;
+  return (sizeW, width - icon - sizeW - dateW - 12 >= 110 ? dateW : 0);
+}
+
+const _monthsRo = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
+const _monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// "22 nov. 2026, 14:05" — the detailed rows have room for it.
+String fmtLongDate(DateTime d) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  final m = (isEn ? _monthsEn : _monthsRo)[d.month - 1];
+  return '${d.day} $m ${d.year}, ${two(d.hour)}:${two(d.minute)}';
 }
 
 class PanelView extends StatefulWidget {
@@ -62,6 +86,7 @@ class _PanelViewState extends State<PanelView> {
   final _crumbs = ScrollController();
   final _filter = TextEditingController();
   int _seenTick = -1;
+  final _focusKey = GlobalKey();
   String? _flash;
 
   Panel get p => widget.panel;
@@ -116,11 +141,16 @@ class _PanelViewState extends State<PanelView> {
       _scroll.jumpTo(0);
       return;
     }
-    final h = rowHeight();
+    // Detailed rows vary in height: jump near it, then centre it exactly.
+    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     final target = (idx * h - view / 2 + h / 2).clamp(0.0, _scroll.position.maxScrollExtent);
     _scroll.jumpTo(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _focusKey.currentContext;
+      if (c != null && c.mounted) Scrollable.ensureVisible(c, alignment: 0.5);
+    });
     setState(() => _flash = name);
     Future.delayed(const Duration(milliseconds: 900), () {
       if (mounted && _flash == name) setState(() => _flash = null);
@@ -372,7 +402,7 @@ class _PanelViewState extends State<PanelView> {
     if (p.loading && p.entries.isEmpty) {
       return const Center(child: SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.5)));
     }
-    final h = rowHeight();
+    final h = rowHeight(context);
     final parent = _showParent;
     final count = p.entries.length + (parent ? 1 : 0);
 
@@ -411,7 +441,7 @@ class _PanelViewState extends State<PanelView> {
         child: ListView.builder(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemExtent: h,
+          itemExtent: store.table ? h : null,
           itemCount: count,
           padding: const EdgeInsets.only(bottom: 8),
           itemBuilder: (_, i) {
@@ -441,7 +471,7 @@ class _PanelViewState extends State<PanelView> {
 
   /// Column header: tap to sort, tap again to reverse (like TC).
   Widget _columns(ColorScheme cs) {
-    final (sizeW, dateW) = tableCols(_width);
+    final (sizeW, dateW) = tableCols(context, _width);
     final s = store.fontScale;
     Widget head(String label, SortBy by, {double? width, TextAlign align = TextAlign.left}) {
       final on = p.sort.by == by;
@@ -486,11 +516,11 @@ class _PanelViewState extends State<PanelView> {
     final sel = p.selected.contains(e.path);
     final flash = _flash == e.name;
     final s = store.fontScale;
-    final (sizeW, dateW) = tableCols(_width);
+    final (sizeW, dateW) = tableCols(context, _width);
     final selecting = p.hasSelection;
     final dim = cs.onSurfaceVariant;
     final num = TextStyle(fontSize: 12.5 * s, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()]);
-    final zebra = i.isOdd ? cs.onSurface.withValues(alpha: 0.028) : Colors.transparent;
+    final line = BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.5);
 
     return Material(
       color: Colors.transparent,
@@ -514,11 +544,14 @@ class _PanelViewState extends State<PanelView> {
         },
         child: AnimatedContainer(
           duration: Duration(milliseconds: flash ? 120 : 380),
-          color: sel
-              ? cs.primary.withValues(alpha: 0.14)
-              : flash
-                  ? cs.tertiary.withValues(alpha: 0.18)
-                  : zebra,
+          decoration: BoxDecoration(
+            color: sel
+                ? cs.primary.withValues(alpha: 0.14)
+                : flash
+                    ? cs.tertiary.withValues(alpha: 0.18)
+                    : Colors.transparent,
+            border: Border(bottom: line),
+          ),
           padding: const EdgeInsets.only(right: 12),
           child: Row(children: [
             GestureDetector(
@@ -573,8 +606,9 @@ class _PanelViewState extends State<PanelView> {
           widget.onActivate();
           p.up();
         },
-        child: SizedBox(
+        child: Container(
           height: h,
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.5))),
           child: Row(children: [
             SizedBox(width: 12 + 24 * s + 12, child: Icon(Icons.subdirectory_arrow_left_rounded, size: 20 * s, color: cs.onSurfaceVariant)),
             Text('..', style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
@@ -582,44 +616,47 @@ class _PanelViewState extends State<PanelView> {
         ),
       );
     }
+    final iconSize = (store.compact ? 38.0 : 44.0) * s;
     return InkWell(
       onTap: () {
         widget.onActivate();
         p.up();
       },
-      child: SizedBox(
-        height: h,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(children: [
-            Container(
-              width: 34 * s,
-              height: 34 * s,
-              decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10 * s)),
-              child: Icon(Icons.arrow_upward_rounded, size: 19 * s, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(width: 12),
-            Text('..', style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-          ]),
+      child: Row(children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: store.compact ? 8 : 10),
+          child: SizedBox(
+            width: iconSize,
+            height: iconSize * 0.8,
+            child: Icon(Icons.subdirectory_arrow_left_rounded, size: iconSize * 0.55, color: cs.onSurfaceVariant),
+          ),
         ),
-      ),
+        Expanded(
+          child: Container(
+            height: iconSize * 0.8 + (store.compact ? 16 : 20),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.5))),
+            child: Text('..', style: TextStyle(fontSize: 16 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          ),
+        ),
+      ]),
     );
   }
 
+
+  /// Detailed row (Solid Explorer style): full name on up to three lines,
+  /// size and date underneath, a hairline between rows.
   Widget _row(ColorScheme cs, Entry e, double h) {
     final sel = p.selected.contains(e.path);
     final flash = _flash == e.name;
     final s = store.fontScale;
-    final t = Theme.of(context).textTheme;
-    final sub = TextStyle(
-      fontSize: 11.5 * s,
-      color: cs.onSurfaceVariant,
-      fontFeatures: const [FontFeature.tabularFigures()],
-      height: 1.1,
-    );
     final selecting = p.hasSelection;
+    final dim = cs.onSurfaceVariant;
+    final iconSize = (store.compact ? 38.0 : 44.0) * s;
+    final meta = TextStyle(fontSize: 12.5 * s, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()], height: 1.2);
 
     return Material(
+      key: e.name == p.focusName ? _focusKey : null,
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -640,14 +677,13 @@ class _PanelViewState extends State<PanelView> {
           }
         },
         child: AnimatedContainer(
-          duration: Duration(milliseconds: flash ? 120 : 400),
+          duration: Duration(milliseconds: flash ? 120 : 380),
           color: sel
-              ? cs.primary.withValues(alpha: 0.14)
+              ? cs.primary.withValues(alpha: 0.13)
               : flash
                   ? cs.tertiary.withValues(alpha: 0.18)
                   : Colors.transparent,
-          padding: const EdgeInsets.only(left: 6, right: 12),
-          child: Row(children: [
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Tapping the icon always toggles selection (quick multi-select).
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -657,31 +693,32 @@ class _PanelViewState extends State<PanelView> {
                 p.toggle(e);
               },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Opacity(opacity: e.hidden ? 0.55 : 1, child: EntryIcon(e, size: (store.compact ? 34 : 40) * s, selected: sel)),
+                padding: EdgeInsets.fromLTRB(14, store.compact ? 9 : 12, 14, store.compact ? 9 : 12),
+                child: Opacity(opacity: e.hidden ? 0.55 : 1, child: EntryIcon(e, size: iconSize, selected: sel, solid: true)),
               ),
             ),
-            const SizedBox(width: 6),
             Expanded(
-              child: Opacity(
-                opacity: e.hidden ? 0.6 : 1,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(0, store.compact ? 9 : 12, 14, store.compact ? 9 : 12),
+                constraints: BoxConstraints(minHeight: iconSize + (store.compact ? 18 : 24)),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.5))),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(
                     e.name,
-                    maxLines: 1,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyLarge?.copyWith(
-                      fontSize: 14.5 * s,
-                      height: 1.15,
-                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w400,
-                      color: sel ? cs.primary : null,
+                    style: TextStyle(
+                      fontSize: 15 * s,
+                      height: 1.2,
+                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w500,
+                      color: sel ? cs.primary : (e.hidden ? dim : cs.onSurface),
                     ),
                   ),
-                  SizedBox(height: store.compact ? 2 : 4),
+                  const SizedBox(height: 3),
                   Row(children: [
-                    if (!e.isDir) Text(fmtSize(e.size), style: sub),
+                    if (!e.isDir) Text(fmtSize(e.size), style: meta),
                     const Spacer(),
-                    Text(fmtListDate(e.modified), style: sub),
+                    Text(fmtLongDate(e.modified), style: meta),
                   ]),
                 ]),
               ),

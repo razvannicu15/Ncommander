@@ -234,11 +234,18 @@ void main() {
     await t.pump(const Duration(milliseconds: 300));
     await shot(t, '15_search');
 
-    // List view (two-line rows) with thumbnails setting off.
-    store.table = false;
-    await commander(t, Brightness.light, left: 'Download', select: ['concert.mp4']);
-    await shot(t, '16_list_view');
+    // Compact single-line view with a large phone font.
     store.table = true;
+    await setup(t);
+    t.platformDispatcher.textScaleFactorTestValue = 1.3;
+    await commander(t, Brightness.light, left: 'Download', select: ['concert.mp4']);
+    await shot(t, '16_compact_bigfont');
+    await commander(t, Brightness.dark, left: 'Download');
+    await shot(t, '17_compact_bigfont_dark');
+    store.table = false;
+    await commander(t, Brightness.light, left: 'Download');
+    await shot(t, '18_detailed_bigfont');
+    t.platformDispatcher.clearTextScaleFactorTestValue();
 
     store.language = 'en';
     setLanguage('en');

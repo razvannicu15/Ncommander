@@ -148,8 +148,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               child: SegmentedButton<bool>(
                 showSelectedIcon: false,
                 segments: [
-                  ButtonSegment(value: true, icon: const Icon(Icons.table_rows_outlined), label: Text(tr('Tabel', 'Table'))),
-                  ButtonSegment(value: false, icon: const Icon(Icons.view_list_outlined), label: Text(tr('Listă', 'List'))),
+                  ButtonSegment(value: false, icon: const Icon(Icons.view_list_outlined), label: Text(tr('Detaliat', 'Detailed'))),
+                  ButtonSegment(value: true, icon: const Icon(Icons.table_rows_outlined), label: Text(tr('Compact', 'Compact'))),
                 ],
                 selected: {store.table},
                 onSelectionChanged: (s) => _set(() => store.table = s.first),

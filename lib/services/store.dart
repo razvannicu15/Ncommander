@@ -120,7 +120,7 @@ class Store extends ChangeNotifier {
   bool foldersFirst = true;
   bool showHidden = false;
   bool thumbnails = false;
-  bool table = true;
+  bool table = false;
   bool compact = true;
   bool showParent = true;
   bool confirmDelete = true;
@@ -166,7 +166,7 @@ class Store extends ChangeNotifier {
     foldersFirst = s['foldersFirst'] ?? true;
     showHidden = s['hidden'] ?? false;
     thumbnails = s['thumbs2'] ?? false;
-    table = s['table'] ?? true;
+    table = s['compactView'] ?? false;
     compact = s['compact'] ?? true;
     showParent = s['parent'] ?? true;
     confirmDelete = s['confirmDel'] ?? true;
@@ -197,7 +197,7 @@ class Store extends ChangeNotifier {
           'foldersFirst': foldersFirst,
           'hidden': showHidden,
           'thumbs2': thumbnails,
-          'table': table,
+          'compactView': table,
           'compact': compact,
           'parent': showParent,
           'confirmDel': confirmDelete,
