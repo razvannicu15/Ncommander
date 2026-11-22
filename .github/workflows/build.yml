@@ -60,7 +60,7 @@ jobs:
             -keyout /etc/ssl/private/pure-ftpd.pem -out /etc/ssl/private/pure-ftpd.pem 2>/dev/null
           sudo chmod 600 /etc/ssl/private/pure-ftpd.pem
           sudo /usr/sbin/pure-ftpd -B -g /tmp/pf1.pid -S 127.0.0.1,2122 -l unix -E -A -j -p 30000:30049
-          sudo /usr/sbin/pure-ftpd -B -g /tmp/pf2.pid -S 127.0.0.1,2123 -l unix -E -A -j -p 30050:30099 -Y 2
+          sudo /usr/sbin/pure-ftpd -B -g /tmp/pf2.pid -S 127.0.0.1,2123 -l unix -E -A -j -p 30050:30099 -Y 2 -d
           sleep 2
           (echo QUIT | nc -w 3 127.0.0.1 2122) || true
 
@@ -68,6 +68,11 @@ jobs:
         env:
           FTP_SERVERS: "pyftpdlib|127.0.0.1|2121|nc|pw|0;pureftpd|127.0.0.1|2122|ncp|pw|0;pureftpd-tls|127.0.0.1|2123|ncp|pw|1"
         run: flutter test
+
+      - name: FTP server log
+        if: always()
+        continue-on-error: true
+        run: sudo journalctl --no-pager -t pure-ftpd | tail -60 || true
 
       # Real renders of every screen (light/dark, RO/EN) for visual review.
       - name: Screenshots

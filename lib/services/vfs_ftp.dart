@@ -25,6 +25,12 @@ class _Dropped implements Exception {
   String toString() => tr('Serverul a închis conexiunea', 'The server closed the connection');
 }
 
+/// The encrypted data channel (PROT P) doesn't work with this server;
+/// the caller retries with clear data (PROT C, login still encrypted).
+class TlsDataException implements Exception {
+  const TlsDataException();
+}
+
 /// Line reader over a socket that can be upgraded to TLS mid-way.
 class _Wire {
   Socket? _s;
@@ -99,12 +105,15 @@ class _Wire {
 /// Minimal FTP / FTPS (explicit or port 990 implicit) client: passive mode,
 /// MLSD with LIST fallback, binary transfers with progress.
 class FtpClient {
-  FtpClient({required this.host, this.port = 21, this.user = '', this.password = '', this.tls = false});
+  FtpClient({required this.host, this.port = 21, this.user = '', this.password = '', this.tls = false, this.protectData = true});
 
   final String host;
   final int port;
   final String user, password;
   final bool tls;
+
+  /// PROT P (encrypted transfers) vs PROT C (only the login encrypted).
+  final bool protectData;
 
   final _w = _Wire();
   bool _mlsd = false;
@@ -161,7 +170,7 @@ class FtpClient {
     }
     if (tls) {
       await cmd('PBSZ 0');
-      await cmd('PROT P');
+      await cmd(protectData ? 'PROT P' : 'PROT C');
     }
     final u = user.isEmpty ? 'anonymous' : user;
     var r = await cmd('USER $u');
@@ -225,8 +234,32 @@ class FtpClient {
     throw RemoteException(tr('Nu se poate deschide conexiunea de date (PASV)', 'Can\'t open the data connection (PASV)') + (last == null ? '' : ': $last'));
   }
 
-  Future<Socket> _secureData(Socket s) async =>
-      tls ? await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 15)) : s;
+  bool get _encData => tls && protectData;
+
+  Future<Socket> _secureData(Socket s) async {
+    if (!_encData) return s;
+    try {
+      return await SecureSocket.secure(s, host: host, onBadCertificate: _badCert).timeout(const Duration(seconds: 10));
+    } catch (_) {
+      s.destroy();
+      throw const TlsDataException();
+    }
+  }
+
+  /// After a failed transfer the control connection is out of step: drop it
+  /// so the next command starts on a fresh one.
+  Future<T> _transfer<T>(Future<T> Function() f) async {
+    try {
+      return await f();
+    } catch (e) {
+      destroy();
+      if (_encData && e is RemoteException && e.message.contains(': ')) {
+        // Silence on an encrypted data channel: try clear data next time.
+        if (e.message.endsWith(tr('serverul nu trimite date', 'the server sends no data'))) throw const TlsDataException();
+      }
+      rethrow;
+    }
+  }
 
   /// Data stream with a clear error when the server stops sending.
   Stream<List<int>> _guard(Stream<List<int>> s, String what) => s.timeout(_dataTimeout, onTimeout: (sink) {
@@ -255,7 +288,9 @@ class FtpClient {
     return out;
   }
 
-  Future<List<int>> _dataCommand(String c) async {
+  Future<List<int>> _dataCommand(String c) => _transfer(() => _dataCommand0(c));
+
+  Future<List<int>> _dataCommand0(String c) async {
     final ds = await _data();
     final r = await cmd(c);
     if (r.code != 150 && r.code != 125) {
@@ -276,7 +311,10 @@ class FtpClient {
     return bytes;
   }
 
-  Future<void> retr(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
+  Future<void> retr(String path, String localPath, OnBytes onBytes, bool Function() cancelled) =>
+      _transfer(() => _retr(path, localPath, onBytes, cancelled));
+
+  Future<void> _retr(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
     final ds = await _data();
     final r = await cmd('RETR $path');
     if (r.code != 150 && r.code != 125) {
@@ -301,7 +339,10 @@ class FtpClient {
     if (!done.ok) throw RemoteException('RETR: ${done.code} ${done.text}');
   }
 
-  Future<void> stor(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
+  Future<void> stor(String path, String localPath, OnBytes onBytes, bool Function() cancelled) =>
+      _transfer(() => _stor(path, localPath, onBytes, cancelled));
+
+  Future<void> _stor(String path, String localPath, OnBytes onBytes, bool Function() cancelled) async {
     final ds = await _data();
     final r = await cmd('STOR $path');
     if (r.code != 150 && r.code != 125) {
@@ -433,7 +474,11 @@ class FtpVfs extends Vfs {
   FtpClient? _browse, _xfer;
   Future<void> _browseLock = Future.value(), _xferLock = Future.value();
 
-  FtpClient _make() => FtpClient(host: conn.host, port: conn.port, user: conn.user, password: conn.password, tls: conn.tls);
+  /// Set when the server can't do encrypted data connections.
+  bool _clearData = false;
+
+  FtpClient _make() =>
+      FtpClient(host: conn.host, port: conn.port, user: conn.user, password: conn.password, tls: conn.tls, protectData: !_clearData);
 
   /// Server path for a vfs path ("ftp://id/a b" → "/base/a b").
   String server(String path) {
@@ -471,6 +516,15 @@ class FtpVfs extends Vfs {
             c?.destroy();
             if (xfer) _xfer = null;
             rethrow;
+          } on TlsDataException {
+            c?.destroy();
+            if (xfer) {
+              _xfer = null;
+            } else {
+              _browse = null;
+            }
+            if (_clearData) throw RemoteException(tr('Conexiunea de date TLS nu merge', 'The TLS data connection fails'));
+            _clearData = true; // and try again with PROT C
           } on RemoteException {
             rethrow;
           } catch (e) {
@@ -536,8 +590,8 @@ class FtpVfs extends Vfs {
 }
 
 /// Tries the settings once; returns an error text or null when it works.
-Future<String?> testFtp(Conn c) async {
-  final f = FtpClient(host: c.host, port: c.port, user: c.user, password: c.password, tls: c.tls);
+Future<String?> testFtp(Conn c, {bool protectData = true}) async {
+  final f = FtpClient(host: c.host, port: c.port, user: c.user, password: c.password, tls: c.tls, protectData: protectData);
   try {
     await f.connect();
     final dir = c.folder.isEmpty ? '/' : c.folder;
@@ -545,6 +599,10 @@ Future<String?> testFtp(Conn c) async {
     await f.list(dir, 'ftp://test');
     await f.quit();
     return null;
+  } on TlsDataException {
+    f.destroy();
+    if (protectData) return testFtp(c, protectData: false);
+    return tr('Conexiunea de date TLS nu merge', 'The TLS data connection fails');
   } catch (e) {
     f.destroy();
     return remoteError(e);
