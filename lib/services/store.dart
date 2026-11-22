@@ -131,7 +131,9 @@ class Store extends ChangeNotifier {
   final List<Conn> conns = [];
 
   /// Microsoft app (client) ID for OneDrive; the build can bake one in.
-  String onedriveClientId = const String.fromEnvironment('ONEDRIVE_CLIENT_ID');
+  /// Ncommander's own registration in Microsoft Entra (public client, no secret).
+  static const _oneDriveApp = 'b77159ec-a8e2-40f0-abc2-ba0525f04ac4';
+  String onedriveClientId = _oneDriveApp;
 
   Conn? conn(String id) => conns.where((c) => c.id == id).firstOrNull;
   PanelSaved? left, right;
@@ -181,7 +183,8 @@ class Store extends ChangeNotifier {
       ..clear()
       ..addAll(((j['conns'] as List?) ?? []).whereType<Map>().map(Conn.fromJson).whereType<Conn>());
     final od = j['onedriveClientId'];
-    if (od is String && od.isNotEmpty) onedriveClientId = od;
+    // The built-in ID wins over anything pasted earlier.
+    if (_oneDriveApp.isEmpty && od is String && od.isNotEmpty) onedriveClientId = od;
     left = PanelSaved.fromJson(j['left']);
     right = PanelSaved.fromJson(j['right']);
     activePanel = ((j['activePanel'] as int?) ?? 0).clamp(0, 1);
