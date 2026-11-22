@@ -131,9 +131,9 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               child: SegmentedButton<PanelLayout>(
                 showSelectedIcon: false,
                 segments: [
-                  ButtonSegment(value: PanelLayout.auto, icon: const Icon(Icons.screen_rotation_alt_rounded), label: Text(layoutLabel(PanelLayout.auto))),
-                  ButtonSegment(value: PanelLayout.sideBySide, icon: const Icon(Icons.view_column_outlined), label: Text(layoutLabel(PanelLayout.sideBySide))),
-                  ButtonSegment(value: PanelLayout.stacked, icon: const Icon(Icons.view_agenda_outlined), label: Text(layoutLabel(PanelLayout.stacked))),
+                  ButtonSegment(value: PanelLayout.auto, label: Text(layoutLabel(PanelLayout.auto))),
+                  ButtonSegment(value: PanelLayout.sideBySide, label: Text(layoutLabel(PanelLayout.sideBySide))),
+                  ButtonSegment(value: PanelLayout.stacked, label: Text(layoutLabel(PanelLayout.stacked))),
                 ],
                 selected: {store.layout},
                 onSelectionChanged: (s) => _set(() => store.layout = s.first),

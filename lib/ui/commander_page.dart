@@ -575,7 +575,11 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     final has = n > 0;
     final row = _sideBySide(MediaQuery.sizeOf(context));
     // Arrow shows where Copy/Move go, like TC's F5 dialog.
-    final dir = row ? (active == 0 ? '→' : '←') : (active == 0 ? '↓' : '↑');
+    final dir = row
+        ? (active == 0 ? Icons.east_rounded : Icons.west_rounded)
+        : (active == 0 ? Icons.south_rounded : Icons.north_rounded);
+    // Short screens (phone in landscape): icons only.
+    final labels = MediaQuery.sizeOf(context).height >= 500;
     return Container(
       decoration: BoxDecoration(
         color: cs.surfaceContainer,
@@ -584,14 +588,14 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 62,
+          height: labels ? 62 : 48,
           child: Row(children: [
-            _BarButton(icon: Icons.file_copy_outlined, label: '${tr('Copiere', 'Copy')} $dir', enabled: has, onTap: () => copyMove(false)),
-            _BarButton(icon: Icons.drive_file_move_outline, label: '${tr('Mutare', 'Move')} $dir', enabled: has, onTap: () => copyMove(true)),
-            _BarButton(icon: Icons.drive_file_rename_outline, label: tr('Redenumire', 'Rename'), enabled: n == 1, onTap: rename),
-            _BarButton(icon: Icons.create_new_folder_outlined, label: tr('Nou', 'New'), enabled: true, onTap: createNew),
-            _BarButton(icon: Icons.delete_outline, label: tr('Ștergere', 'Delete'), enabled: has, onTap: delete, danger: true),
-            _BarButton(icon: Icons.more_horiz_rounded, label: tr('Mai mult', 'More'), enabled: true, onTap: more, badge: has ? n : null),
+            _BarButton(icon: Icons.file_copy_outlined, label: tr('Copiere', 'Copy'), arrow: dir, labels: labels, enabled: has, onTap: () => copyMove(false)),
+            _BarButton(icon: Icons.drive_file_move_outline, label: tr('Mutare', 'Move'), arrow: dir, labels: labels, enabled: has, onTap: () => copyMove(true)),
+            _BarButton(icon: Icons.drive_file_rename_outline, label: tr('Redenumire', 'Rename'), labels: labels, enabled: n == 1, onTap: rename),
+            _BarButton(icon: Icons.create_new_folder_outlined, label: tr('Nou', 'New'), labels: labels, enabled: true, onTap: createNew),
+            _BarButton(icon: Icons.delete_outline, label: tr('Ștergere', 'Delete'), labels: labels, enabled: has, onTap: delete, danger: true),
+            _BarButton(icon: Icons.more_horiz_rounded, label: tr('Mai mult', 'More'), labels: labels, enabled: true, onTap: more, badge: has ? n : null),
           ]),
         ),
       ),
@@ -600,8 +604,11 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 }
 
 class _BarButton extends StatelessWidget {
-  const _BarButton({required this.icon, required this.label, required this.enabled, required this.onTap, this.danger = false, this.badge});
+  const _BarButton(
+      {required this.icon, required this.label, required this.enabled, required this.onTap, this.danger = false, this.badge, this.arrow, this.labels = true});
   final IconData icon;
+  final IconData? arrow;
+  final bool labels;
   final String label;
   final bool enabled;
   final VoidCallback onTap;
@@ -613,18 +620,29 @@ class _BarButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final c = !enabled ? cs.onSurface.withValues(alpha: 0.32) : (danger ? cs.error : cs.onSurface);
     return Expanded(
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(14),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Badge(
-            isLabelVisible: badge != null,
-            label: Text('${badge ?? ''}'),
-            child: Icon(icon, color: c, size: 23),
-          ),
-          const SizedBox(height: 4),
-          Text(label, maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w500)),
-        ]),
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Badge(
+              isLabelVisible: badge != null,
+              label: Text('${badge ?? ''}'),
+              child: Icon(icon, color: c, size: 23),
+            ),
+            if (labels) ...[
+              const SizedBox(height: 4),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Flexible(
+                  child: Text(label,
+                      maxLines: 1, overflow: TextOverflow.fade, softWrap: false, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w500)),
+                ),
+                if (arrow != null) ...[const SizedBox(width: 2), Icon(arrow, size: 11, color: c)],
+              ]),
+            ],
+          ]),
+        ),
       ),
     );
   }

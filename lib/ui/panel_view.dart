@@ -516,7 +516,8 @@ class _PanelViewState extends State<PanelView> {
   Widget _footer(ColorScheme cs) {
     final style = TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]);
     final left = p.hasSelection
-        ? tr('${p.selected.length} selectate · ${fmtSize(p.selectedBytes)}', '${p.selected.length} selected · ${fmtSize(p.selectedBytes)}')
+        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'} · ${fmtSize(p.selectedBytes)}',
+            '${p.selected.length} selected · ${fmtSize(p.selectedBytes)}')
         : [
             if (p.dirCount > 0) foldersText(p.dirCount),
             if (p.fileCount > 0) filesText(p.fileCount),

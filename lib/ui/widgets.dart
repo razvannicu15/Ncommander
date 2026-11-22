@@ -73,15 +73,18 @@ class Group extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: padding,
-      decoration: BoxDecoration(
+    // A Material (not a decorated box) so ListTile ink shows inside.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Material(
         color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.6),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.6),
+        ),
+        child: Padding(padding: padding, child: Column(children: children)),
       ),
-      child: Column(children: children),
     );
   }
 }

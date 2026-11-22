@@ -8,11 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ncommander/core/i18n.dart';
 import 'package:ncommander/main.dart';
 import 'package:ncommander/models/panel.dart';
+import 'package:ncommander/services/fs.dart';
 import 'package:ncommander/services/native.dart';
 import 'package:ncommander/services/store.dart';
 import 'package:ncommander/ui/commander_page.dart';
 import 'package:ncommander/ui/editor_page.dart';
 import 'package:ncommander/ui/settings_page.dart';
+import 'package:ncommander/ui/zip_page.dart';
 
 final fontsDir = Platform.environment['SCREEN_FONTS'];
 late Directory root;
@@ -142,6 +144,7 @@ void main() {
   testWidgets('screens', (t) async {
     debugDisableShadows = false;
     addTearDown(() => debugDisableShadows = true);
+    store.language = 'ro';
     setLanguage('ro');
 
     // Phone portrait: panels stacked.
@@ -196,14 +199,39 @@ void main() {
     await shot(t, '10_settings_dark');
 
     await t.pumpWidget(const SizedBox());
-    await t.pumpWidget(app(EditorPage(path: '$home/Documents/notite.md'), Brightness.light));
-    await t.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
+    await t.runAsync(() async {
+      await t.pumpWidget(app(EditorPage(path: '$home/Documents/notite.md'), Brightness.light));
+      await Future.delayed(const Duration(milliseconds: 400));
+    });
     await t.pump(const Duration(milliseconds: 300));
     await shot(t, '11_editor');
 
+    // Properties of a selection (folder size measured in the background).
+    await commander(t, Brightness.light, left: '', select: ['Download']);
+    await t.tap(find.byIcon(Icons.more_horiz_rounded));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Proprietăți'));
+    await t.pump();
+    await t.runAsync(() => Future.delayed(const Duration(milliseconds: 500)));
+    await t.pumpAndSettle();
+    await shot(t, '13_properties');
+
+    // Browsing inside a ZIP.
+    await t.runAsync(() => FileOps((_, __, ___) async => const ConflictAnswer(ConflictAction.overwrite))
+        .run(Job(JobKind.zip, ['$home/Documents', '$home/Download/notite.txt', '$home/Download/config.json'], target: '$home/Download', zipName: 'proiect.zip')));
+    await t.pumpWidget(const SizedBox());
+    await t.runAsync(() async {
+      await t.pumpWidget(app(ZipPage(path: '$home/Download/proiect.zip', extractTo: home, onExtract: (_) {}), Brightness.dark));
+      await Future.delayed(const Duration(milliseconds: 500));
+    });
+    await t.pump(const Duration(milliseconds: 300));
+    await shot(t, '14_zip_dark');
+
+    store.language = 'en';
     setLanguage('en');
     await commander(t, Brightness.light, left: 'Download', select: ['poze_vacanta.zip', 'concert.mp4']);
     await shot(t, '12_portrait_en');
+    store.language = 'ro';
     setLanguage('ro');
   }, skip: skip);
 }
