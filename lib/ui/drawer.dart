@@ -1,0 +1,156 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+
+import '../core/format.dart';
+import '../core/i18n.dart';
+import '../models/panel.dart';
+import '../services/fs.dart';
+import '../services/native.dart';
+import '../services/store.dart';
+
+/// Storage volumes, common folders and bookmarks.
+class LocationsDrawer extends StatefulWidget {
+  const LocationsDrawer({super.key, required this.panel, required this.onGo, required this.onSettings});
+  final Panel panel;
+  final void Function(String path) onGo;
+  final VoidCallback onSettings;
+
+  @override
+  State<LocationsDrawer> createState() => _LocationsDrawerState();
+}
+
+class _LocationsDrawerState extends State<LocationsDrawer> {
+  @override
+  void initState() {
+    super.initState();
+    volumes.refresh().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final cur = widget.panel.path;
+    final home = volumes.primary;
+    final common = <(String, IconData, String)>[
+      ('Download', Icons.download_rounded, tr('Descărcări', 'Downloads')),
+      ('DCIM', Icons.photo_camera_outlined, tr('Cameră', 'Camera')),
+      ('Pictures', Icons.image_outlined, tr('Imagini', 'Pictures')),
+      ('Documents', Icons.description_outlined, tr('Documente', 'Documents')),
+      ('Music', Icons.music_note_outlined, tr('Muzică', 'Music')),
+      ('Movies', Icons.movie_outlined, tr('Filme', 'Movies')),
+    ].where((c) => Directory(join(home, c.$1)).existsSync()).toList();
+
+    Widget item(IconData icon, String label, String path, {String? sub, Widget? trailing, VoidCallback? onLong}) {
+      final on = cur == path;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+        child: ListTile(
+          dense: true,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          selected: on,
+          selectedTileColor: cs.secondaryContainer,
+          selectedColor: cs.onSecondaryContainer,
+          leading: Icon(icon),
+          title: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+          subtitle: sub == null ? null : Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: trailing,
+          onTap: () => widget.onGo(path),
+          onLongPress: onLong,
+        ),
+      );
+    }
+
+    Widget head(String s) => Padding(
+          padding: const EdgeInsets.fromLTRB(28, 18, 16, 6),
+          child: Text(s, style: t.labelLarge?.copyWith(color: cs.primary, fontWeight: FontWeight.w700)),
+        );
+
+    return NavigationDrawer(
+      backgroundColor: cs.surfaceContainerLow,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 18, 16, 4),
+          child: Row(children: [
+            Text('Ncommander', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const Spacer(),
+            IconButton(icon: const Icon(Icons.settings_outlined), tooltip: tr('Setări', 'Settings'), onPressed: widget.onSettings),
+          ]),
+        ),
+        head(tr('Stocare', 'Storage')),
+        for (final v in volumes.value) _volume(v, cs, cur),
+        if (common.isNotEmpty) head(tr('Foldere', 'Folders')),
+        for (final c in common) item(c.$2, c.$3, join(home, c.$1)),
+        if (store.bookmarks.isNotEmpty) head(tr('Favorite', 'Bookmarks')),
+        for (final b in store.bookmarks)
+          item(
+            Icons.star_rounded,
+            b.name.isEmpty ? nameOf(b.path) : b.name,
+            b.path,
+            sub: _short(b.path),
+            trailing: IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close_rounded, size: 18),
+              onPressed: () => setState(() => store.toggleBookmark(b.path, b.name)),
+            ),
+          ),
+        head(tr('Sistem', 'System')),
+        item(Icons.storage_rounded, tr('Rădăcină', 'Root'), '/', sub: '/'),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  String _short(String p) {
+    final v = volumes.of(p);
+    if (v == null) return p;
+    return '${volumes.label(v)}${p.substring(v.path.length)}';
+  }
+
+  Widget _volume(Volume v, ColorScheme cs, String cur) {
+    final on = volumes.of(cur)?.path == v.path;
+    final used = v.total > 0 ? 1 - v.free / v.total : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Material(
+        color: on ? cs.secondaryContainer : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => widget.onGo(v.path),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Row(children: [
+              Icon(v.primary ? Icons.smartphone_rounded : (v.removable ? Icons.sd_card_outlined : Icons.usb_rounded),
+                  color: on ? cs.onSecondaryContainer : cs.onSurfaceVariant),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(volumes.label(v), style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5, color: on ? cs.onSecondaryContainer : null)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: used,
+                      minHeight: 5,
+                      backgroundColor: cs.outlineVariant.withValues(alpha: 0.5),
+                      color: used > 0.9 ? cs.error : cs.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    tr('${fmtSize(v.free)} liber din ${fmtSize(v.total)}', '${fmtSize(v.free)} free of ${fmtSize(v.total)}'),
+                    style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}

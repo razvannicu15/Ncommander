@@ -1,0 +1,67 @@
+import 'dart:typed_data';
+
+import 'package:flutter/services.dart';
+
+class Volume {
+  Volume({required this.path, required this.label, required this.removable, required this.primary, this.total = 0, this.free = 0});
+  final String path;
+  final String label;
+  final bool removable;
+  final bool primary;
+  int total;
+  int free;
+}
+
+/// Bridge to MainActivity.kt: storage access, volumes, intents, thumbnails.
+class Native {
+  static const _ch = MethodChannel('ncommander/native');
+
+  static Future<T?> _call<T>(String m, [Object? a]) async {
+    try {
+      return await _ch.invokeMethod<T>(m, a);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// "All files access" on Android 11+, storage permission before.
+  static Future<bool> hasAccess() async => (await _call<bool>('hasAccess')) ?? true;
+  static Future<void> requestAccess() => _call('requestAccess');
+
+  static Future<List<Volume>> volumes() async {
+    final r = await _call<List<Object?>>('volumes');
+    if (r == null) return [];
+    return [
+      for (final v in r.cast<Map<Object?, Object?>>())
+        Volume(
+          path: v['path'] as String,
+          label: v['label'] as String? ?? '',
+          removable: v['removable'] == true,
+          primary: v['primary'] == true,
+          total: (v['total'] as num?)?.toInt() ?? 0,
+          free: (v['free'] as num?)?.toInt() ?? 0,
+        ),
+    ];
+  }
+
+  /// [total, free] bytes of the volume holding [path].
+  static Future<(int, int)> space(String path) async {
+    final r = await _call<List<Object?>>('space', path);
+    if (r == null || r.length < 2) return (0, 0);
+    return ((r[0] as num).toInt(), (r[1] as num).toInt());
+  }
+
+  /// Opens with the default app; false when no app can open it.
+  static Future<bool> open(String path, String mime, {bool chooser = false}) async =>
+      (await _call<bool>('open', {'path': path, 'mime': mime, 'chooser': chooser})) ?? false;
+
+  static Future<void> share(List<String> paths, String mime) => _call('share', {'paths': paths, 'mime': mime});
+
+  static Future<void> scan(List<String> paths) => _call('scan', paths);
+
+  /// Small preview for videos, audio covers, PDFs and APK icons.
+  static Future<Uint8List?> thumb(String path, String kind, int size) =>
+      _call<Uint8List>('thumb', {'path': path, 'kind': kind, 'size': size});
+
+  static Future<void> copyText(String text) => Clipboard.setData(ClipboardData(text: text));
+}
