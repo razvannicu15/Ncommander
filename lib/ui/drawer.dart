@@ -57,12 +57,13 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
       ],
     ].where((c) => Directory(join(home, c.$1)).existsSync()).toList();
 
-    Widget item(IconData icon, String label, String path, {String? sub, Widget? trailing, VoidCallback? onLong}) {
+    Widget item(IconData icon, String label, String path, {String? sub, Widget? trailing, VoidCallback? onLong, Color? tint}) {
       final on = cur == path || (isRemote(path) && path == rootOf(path) && rootOf(cur) == path);
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
         child: ListTile(
           dense: true,
+          tileColor: tint,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           selected: on,
           selectedTileColor: cs.secondaryContainer,
@@ -93,6 +94,9 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
             IconButton(icon: const Icon(Icons.settings_outlined), tooltip: tr('Setări', 'Settings'), onPressed: widget.onSettings),
           ]),
         ),
+        // On Windows drives, FTP and cloud sit in the bar above each panel;
+        // the side list keeps only folders and bookmarks.
+        if (!Platform.isWindows) ...[
         head(tr('Stocare', 'Storage')),
         for (final v in volumes.value) _volume(v, cs, cur),
         head(tr('Rețea și cloud', 'Network & cloud')),
@@ -122,6 +126,7 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
             onTap: widget.onAddConn,
           ),
         ),
+        ],
         if (common.isNotEmpty) head(tr('Foldere', 'Folders')),
         for (final c in common) item(c.$2, c.$3, join(home, c.$1)),
         if (store.bookmarks.isNotEmpty) head(tr('Favorite', 'Bookmarks')),
@@ -131,6 +136,8 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
             b.name.isEmpty ? nameOf(b.path) : b.name,
             b.path,
             sub: _short(b.path),
+            // Same rows as the folders, on a light wash so they read as yours.
+            tint: Platform.isWindows ? cs.primary.withValues(alpha: 0.06) : null,
             trailing: IconButton(
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.close_rounded, size: 18),

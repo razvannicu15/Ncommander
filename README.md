@@ -54,6 +54,8 @@ La prima pornire aplicația cere **acces la toate fișierele** (necesar pentru u
 
 ## Windows
 
+Bara de discuri de deasupra fiecărui panou are în dreapta butonul **FTP**: lista serverelor salvate se deschide în panoul respectiv (Enter / dublu-clic conectează, click dreapta: redenumire, editare, eliminare; ultimul rând adaugă un server). Meniul lateral păstrează doar folderele obișnuite și favoritele.
+
 `Ncommander-windows.zip` din release-ul „latest” (sau opțiunea **[6]** din `Ncommander.bat`, care îl instalează în `D:\Apps\Ncommander\win` și pune o scurtătură pe Desktop).
 Discuri locale și de rețea, FTP, aceleași teme. Google Drive și OneDrive apar deja ca foldere pe Windows, așa că lipsesc din „Conexiune nouă”.
 Taste Total Commander (merg și cu tastatură pe telefon); comenzile lucrează pe selecție sau, fără selecție, pe rândul cu cursorul:

@@ -263,6 +263,9 @@ class _PanelViewState extends State<PanelView> {
     if (open) widget.onOpen(e);
   }
 
+  /// Server rows in the FTP / cloud list have no size or date.
+  bool _noMeta(Entry e) => e.modified.millisecondsSinceEpoch == 0 && isNetList(p.path);
+
   /// Right click: the row joins (or becomes) the selection, then the menu.
   void _menu2(Entry e, Offset at) {
     widget.onActivate();
@@ -435,6 +438,7 @@ class _PanelViewState extends State<PanelView> {
                   ],
                 ),
               ),
+              _netButton(cs, netFtp, Icons.dns_outlined, 'FTP', p.path == netFtp || p.conn?.type == ConnType.ftp),
               if (cur != null && p.total > 0)
                 Padding(
                   padding: const EdgeInsets.only(left: 6, right: 12),
@@ -445,6 +449,43 @@ class _PanelViewState extends State<PanelView> {
           );
         },
       );
+
+  /// FTP button at the right of the drive bar: the server list in this panel.
+  Widget _netButton(ColorScheme cs, String list, IconData icon, String label, bool on) {
+    final fg = on ? cs.onPrimary : cs.onSurface;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Tooltip(
+        message: tr('Serverele $label salvate', 'Saved $label servers'),
+        waitDuration: const Duration(milliseconds: 400),
+        child: Material(
+          color: on ? cs.primary : cs.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: on ? BorderSide.none : BorderSide(color: cs.outlineVariant, width: 0.8),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              widget.onActivate();
+              p.go(list);
+            },
+            child: SizedBox(
+              height: 30,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, size: 15, color: fg),
+                  const SizedBox(width: 6),
+                  Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _driveButton(ColorScheme cs, Volume v, bool on, bool labels) {
     final letter = v.path.substring(0, 1).toUpperCase();
@@ -496,6 +537,8 @@ class _PanelViewState extends State<PanelView> {
   }
 
   IconData _rootIcon() {
+    if (p.path == netFtp) return Icons.dns_outlined;
+    if (p.path == netCloud) return Icons.cloud_outlined;
     final c = p.conn;
     if (c != null) return connIcon(c.type);
     final v = volumes.of(p.path);
@@ -1011,11 +1054,13 @@ class _PanelViewState extends State<PanelView> {
               ),
             SizedBox(
               width: sizeW,
-              child: Text(e.isDir ? (desktop ? '<DIR>' : '') : fmtSize(e.size),
+              child: Text(_noMeta(e) ? '' : (e.isDir ? (desktop ? '<DIR>' : '') : fmtSize(e.size)),
                   textAlign: TextAlign.right, maxLines: 1, style: e.isDir ? num.copyWith(color: dim.withValues(alpha: 0.6)) : num),
             ),
             if (dateW > 0)
-              SizedBox(width: dateW, child: Text(desktop ? fmtDeskDate(e.modified) : fmtListDate(e.modified), textAlign: TextAlign.right, maxLines: 1, style: num)),
+              SizedBox(
+                  width: dateW,
+                  child: Text(_noMeta(e) ? '' : (desktop ? fmtDeskDate(e.modified) : fmtListDate(e.modified)), textAlign: TextAlign.right, maxLines: 1, style: num)),
           ]),
         ),
       ),
@@ -1149,9 +1194,9 @@ class _PanelViewState extends State<PanelView> {
                   ),
                   const SizedBox(height: 3),
                   Row(children: [
-                    if (!e.isDir) Text(fmtSize(e.size), style: meta),
+                    if (!e.isDir && !_noMeta(e)) Text(fmtSize(e.size), style: meta),
                     const Spacer(),
-                    Text(fmtLongDate(e.modified), style: meta),
+                    if (!_noMeta(e)) Text(fmtLongDate(e.modified), style: meta),
                   ]),
                 ]),
               ),

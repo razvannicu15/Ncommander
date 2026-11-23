@@ -48,6 +48,24 @@ class Volumes extends ValueNotifier<List<Volume>> {
 
 final volumes = Volumes();
 
+/// "net://ftp" / "net://cloud": the saved connections listed in a panel.
+const netFtp = 'net://ftp', netCloud = 'net://cloud';
+const netNew = '/+';
+
+bool isNetList(String path) => path == netFtp || path == netCloud;
+
+String netTitle(String path) => path == netFtp ? 'FTP' : 'Cloud';
+
+List<Entry> netEntries(String path) {
+  final ftp = path == netFtp;
+  return [
+    for (final c in store.conns.where((c) => ftp ? c.type == ConnType.ftp : (c.type == ConnType.gdrive || c.type == ConnType.onedrive)))
+      Entry(path: c.root, name: c.name, isDir: true, size: 0, modified: DateTime.fromMillisecondsSinceEpoch(0), id: c.id),
+    // Last row: add a connection.
+    Entry(path: '$path$netNew', name: ftp ? tr('＋ Server FTP nou', '＋ New FTP server') : tr('＋ Conexiune cloud nouă', '＋ New cloud connection'), isDir: false, size: 0, modified: DateTime.fromMillisecondsSinceEpoch(0)),
+  ];
+}
+
 /// True once a physical keyboard is used (from the start on Windows): shows the row cursor.
 final keyboardUsed = ValueNotifier<bool>(Platform.isWindows);
 
@@ -153,7 +171,7 @@ class Panel extends ChangeNotifier {
   bool get atRoot => path == '/';
 
   /// Top of internal storage / SD card: nothing useful above it.
-  bool get atVolumeRoot => isRemote(path) ? path == rootOf(path) && !inZip : volumes.of(path)?.path == path;
+  bool get atVolumeRoot => isNetList(path) || (isRemote(path) ? path == rootOf(path) && !inZip : volumes.of(path)?.path == path);
 
   /// Browsing inside a ZIP archive.
   bool get inZip => path.startsWith('zip://');
@@ -182,7 +200,11 @@ class Panel extends ChangeNotifier {
       notifyListeners();
     }
     final v = vfsFor(p);
-    if (isRemote(p) && v == null) {
+    if (isNetList(p)) {
+      // The saved servers, shown as folders (Windows FTP / cloud button).
+      _raw = netEntries(p);
+      error = null;
+    } else if (isRemote(p) && v == null) {
       if (id != _loadId) return;
       _raw = [];
       error = tr('Conexiunea a fost ștearsă', 'The connection was deleted');
@@ -453,6 +475,7 @@ class Panel extends ChangeNotifier {
   List<(String, String)> crumbs() => _crumbsOf(path);
 
   List<(String, String)> _crumbsOf(String path) {
+    if (isNetList(path)) return [(netTitle(path), path)];
     if (isRemote(path)) {
       final root = rootOf(path);
       final c = connOf(path);
@@ -496,6 +519,7 @@ class Panel extends ChangeNotifier {
   }
 
   String titleOf(TabState t) {
+    if (isNetList(t.path)) return netTitle(t.path);
     if (isRemote(t.path)) return t.path == rootOf(t.path) ? (connOf(t.path)?.name ?? '?') : nameOf(t.path);
     final v = volumes.of(t.path);
     if (v != null && v.path == t.path) return volumes.label(v);

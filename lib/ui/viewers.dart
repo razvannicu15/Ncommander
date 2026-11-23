@@ -236,7 +236,7 @@ class _FontViewPageState extends State<FontViewPage> {
               padding: const EdgeInsets.only(bottom: 14),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 SizedBox(width: 36, child: Text('${size.round()}', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
-                Expanded(child: Text(_sample.text, style: f.copyWith(fontSize: size, height: 1.2))),
+                Expanded(child: Text(_sample.text, style: f.copyWith(fontSize: size.toDouble(), height: 1.2))),
               ]),
             ),
         ]),

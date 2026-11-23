@@ -127,6 +127,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   // --------------------------------------------------------------- open
 
   Future<void> open(Entry e) async {
+    if (e.path.endsWith(netNew) && isNetList(e.path.substring(0, e.path.length - netNew.length))) {
+      return _netNew(e.path.substring(0, e.path.length - netNew.length));
+    }
     if (e.isDir) {
       await cur.go(e.path);
       return;
@@ -295,6 +298,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   List<Entry> get _sel => cur.selectedEntries;
 
   Future<void> copyMove(bool move) async {
+    if (isNetList(cur.path)) return;
     final items = _sel;
     if (items.isEmpty) return;
     final t = await askTarget(context, move: move, items: items, target: other.path);
@@ -305,6 +309,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   /// Ctrl+M: Total Commander's multi-rename tool.
   Future<void> multiRename() async {
+    if (isNetList(cur.path)) return;
     final items = _sel;
     if (items.isEmpty) return;
     final p = cur;
@@ -318,6 +323,10 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   Future<void> rename() async {
     final items = _sel;
+    if (isNetList(cur.path)) {
+      final c = items.length == 1 ? store.conn(items.first.id ?? '') : null;
+      return c == null ? null : connAction(c, 'rename');
+    }
     if (items.length > 1) return multiRename();
     if (items.length != 1) return;
     final e = items.first;
@@ -396,6 +405,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   }
 
   Future<void> delete() async {
+    if (isNetList(cur.path)) return;
     final items = _sel;
     if (items.isEmpty) return;
     final bin = cur.conn != null && cur.conn!.type != ConnType.ftp;
@@ -405,6 +415,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   }
 
   Future<void> zip() async {
+    if (isNetList(cur.path)) return;
     final items = _sel;
     if (items.isEmpty || cur.remote) return;
     final base = items.length == 1 ? stemOf(items.first.name) : nameOf(cur.path);
@@ -704,6 +715,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   Future<void> _contextMenu(Offset at) async {
     final items = _sel;
     if (items.isEmpty) return;
+    if (isNetList(cur.path)) return _connContext(at, items.first);
     final single = items.length == 1 ? items.first : null;
     final cs = Theme.of(context).colorScheme;
     PopupMenuEntry<String> item(String id, IconData icon, String label, [String keys = '', bool danger = false]) => PopupMenuItem(
@@ -769,6 +781,60 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     }
   }
 
+  Future<void> _connContext(Offset at, Entry e) async {
+    cur.clearSelection();
+    final c = store.conn(e.id ?? '');
+    if (c == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final r = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      items: [
+        PopupMenuItem(value: 'open', height: 36, child: Text(tr('Conectare', 'Connect'))),
+        const PopupMenuDivider(),
+        PopupMenuItem(value: 'rename', height: 36, child: Text(tr('Redenumește', 'Rename'))),
+        if (c.type == ConnType.ftp) PopupMenuItem(value: 'edit', height: 36, child: Text(tr('Editează', 'Edit'))),
+        PopupMenuItem(value: 'remove', height: 36, child: Text(tr('Elimină', 'Remove'))),
+      ],
+    );
+    if (r == null || !mounted) return;
+    if (r == 'open') return cur.go(c.root);
+    await connAction(c, r);
+  }
+
+  /// Rename / edit / remove a saved connection (drawer, FTP list).
+  Future<void> connAction(Conn c, String action) async {
+    if (action == 'rename') {
+      final n = await askName(context, title: tr('Redenumește', 'Rename'), initial: c.name, icon: connIcon(c.type), action: tr('Salvează', 'Save'));
+      if (n != null && n.trim().isNotEmpty) {
+        c.name = n.trim();
+        await store.save();
+      }
+    } else if (action == 'edit') {
+      final e = await editFtp(context, c);
+      if (e != null) {
+        for (final p in panels) {
+          if (rootOf(p.path) == c.root) p.load();
+        }
+      }
+    } else if (action == 'remove' && await confirmRemoveConn(context, c)) {
+      for (final p in panels) {
+        if (rootOf(p.path) == c.root) await p.go(volumes.home);
+      }
+    }
+    for (final p in panels) {
+      if (isNetList(p.path)) await p.load(quiet: true);
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Adds a server from the FTP / cloud list in a panel, then opens it.
+  Future<void> _netNew(String list) async {
+    final c = list == netFtp ? await editFtp(context) : await addConnection(context);
+    await cur.load(quiet: true);
+    if (c != null) await cur.go(c.root);
+  }
+
   Future<void> _ftp() async {
     final c = await ftpConnectDialog(context);
     // Panels showing a server that was just removed go home.
@@ -781,6 +847,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   /// Selection, or the cursor row when nothing is selected (TC).
   bool _target() {
+    if (isNetList(cur.path)) return false; // servers aren't files
     if (cur.selected.isNotEmpty) return true;
     final e = cur.cursorEntry;
     if (e == null) return false;
@@ -1069,25 +1136,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           },
           onConnMenu: (c, action) async {
             Navigator.of(context).pop();
-            if (action == 'rename') {
-              final n = await askName(context, title: tr('Redenumește', 'Rename'), initial: c.name, icon: connIcon(c.type), action: tr('Salvează', 'Save'));
-              if (n != null && n.trim().isNotEmpty) {
-                c.name = n.trim();
-                await store.save();
-                setState(() {});
-              }
-            } else if (action == 'edit') {
-              final e = await editFtp(context, c);
-              if (e != null) {
-                for (final p in panels) {
-                  if (rootOf(p.path) == c.root) p.load();
-                }
-              }
-            } else if (action == 'remove' && await confirmRemoveConn(context, c)) {
-              for (final p in panels) {
-                if (rootOf(p.path) == c.root) await p.go(volumes.primary);
-              }
-            }
+            await connAction(c, action);
           },
         ),
         body: Focus(
