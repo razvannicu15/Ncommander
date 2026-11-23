@@ -320,6 +320,10 @@ class _PanelViewState extends State<PanelView> {
 
   Widget _crumbBar(ColorScheme cs) {
     final crumbs = p.crumbs();
+    // Keep the current folder in view when the row gets narrower (selection pill).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _crumbs.hasClients) _crumbs.jumpTo(_crumbs.position.maxScrollExtent);
+    });
     return ShaderMask(
       shaderCallback: (r) => const LinearGradient(
         colors: [Colors.transparent, Colors.black, Colors.black],
