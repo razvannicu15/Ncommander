@@ -19,6 +19,8 @@ import 'drawer.dart';
 import 'editor_page.dart';
 import 'image_page.dart';
 import 'jobs.dart';
+import 'locations_page.dart';
+import 'modern.dart';
 import 'panel_view.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
@@ -681,6 +683,34 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     toast(context, tr('Apasă încă o dată pentru ieșire', 'Press back again to exit'));
   }
 
+  Future<void> connMenu(Conn c, String action) async {
+    if (action == 'rename') {
+      final n = await askName(context, title: tr('Redenumește', 'Rename'), initial: c.name, icon: connIcon(c.type), action: tr('Salvează', 'Save'));
+      if (n != null && n.trim().isNotEmpty) {
+        c.name = n.trim();
+        await store.save();
+        setState(() {});
+      }
+    } else if (action == 'edit') {
+      final e = await editFtp(context, c);
+      if (e != null) {
+        for (final p in panels) {
+          if (rootOf(p.path) == c.root) p.load();
+        }
+      }
+    } else if (action == 'remove' && await confirmRemoveConn(context, c)) {
+      for (final p in panels) {
+        if (rootOf(p.path) == c.root) await p.go(volumes.primary);
+      }
+    }
+  }
+
+  Future<void> openLocations() async {
+    final path = await Navigator.of(context).push<String>(MaterialPageRoute(
+        builder: (_) => LocationsPage(current: cur.path, onConnMenu: connMenu, onSettings: openSettings)));
+    if (path != null) await cur.go(path);
+  }
+
   // --------------------------------------------------------------- build
 
   @override
@@ -693,7 +723,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       },
       child: Scaffold(
         key: _scaffold,
-        drawer: LocationsDrawer(
+        drawer: store.modern ? null : LocationsDrawer(
           panel: cur,
           onGo: (p) {
             Navigator.of(context).pop();
@@ -710,28 +740,10 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           },
           onConnMenu: (c, action) async {
             Navigator.of(context).pop();
-            if (action == 'rename') {
-              final n = await askName(context, title: tr('Redenumește', 'Rename'), initial: c.name, icon: connIcon(c.type), action: tr('Salvează', 'Save'));
-              if (n != null && n.trim().isNotEmpty) {
-                c.name = n.trim();
-                await store.save();
-                setState(() {});
-              }
-            } else if (action == 'edit') {
-              final e = await editFtp(context, c);
-              if (e != null) {
-                for (final p in panels) {
-                  if (rootOf(p.path) == c.root) p.load();
-                }
-              }
-            } else if (action == 'remove' && await confirmRemoveConn(context, c)) {
-              for (final p in panels) {
-                if (rootOf(p.path) == c.root) await p.go(volumes.primary);
-              }
-            }
+            await connMenu(c, action);
           },
         ),
-        body: SafeArea(
+        body: store.modern ? _modernBody(cs) : SafeArea(
           bottom: false,
           child: Column(children: [
             Expanded(child: _panels(cs)),
@@ -743,15 +755,64 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     );
   }
 
+  Widget _modernBody(ColorScheme cs) {
+    final spec = store.spec!;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final n = cur.selected.length;
+    final row = _sideBySide(MediaQuery.sizeOf(context));
+    final dir = row
+        ? (active == 0 ? Icons.east_rounded : Icons.west_rounded)
+        : (active == 0 ? Icons.south_rounded : Icons.north_rounded);
+    return Stack(children: [
+      Positioned.fill(child: StyleBackground(spec: spec, accent: store.accentColor)),
+      SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+          child: _panels(cs, inset: 92 + bottom),
+        ),
+      ),
+      Positioned(
+        left: 12,
+        right: 12,
+        bottom: 12 + bottom,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              JobBar(runner: runner),
+              const SizedBox(height: 6),
+              _FloatingBar(
+                count: n,
+                bytes: cur.selectedBytes,
+                dir: dir,
+                canSearch: !cur.remote,
+                onLocations: openLocations,
+                onSearch: () => cur.remote ? toast(context, tr('Căutarea merge pe locații locale', 'Search works on local storage')) : _search(cur),
+                onMore: more,
+                onNew: createNew,
+                onCopy: () => copyMove(false),
+                onMove: () => copyMove(true),
+                onRename: rename,
+                onDelete: delete,
+              ),
+            ]),
+          ),
+        ),
+      ),
+    ]);
+  }
+
   bool _sideBySide(Size s) => switch (store.layout) {
         PanelLayout.sideBySide => true,
         PanelLayout.stacked => false,
         PanelLayout.auto => s.width >= 600 || s.width > s.height,
       };
 
-  Widget _panels(ColorScheme cs) => LayoutBuilder(builder: (context, c) {
+  Widget _panels(ColorScheme cs, {double inset = 0}) => LayoutBuilder(builder: (context, c) {
         final row = _sideBySide(MediaQuery.sizeOf(context));
         final total = row ? c.maxWidth : c.maxHeight;
+        final modern = store.modern;
         const div = 10.0;
         final a = ((total - div) * split).floorToDouble();
         Widget view(int i) => PanelView(
@@ -763,8 +824,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
                 activatePanel(i);
                 open(e);
               },
-              onDrawer: () => _scaffold.currentState?.openDrawer(),
+              onDrawer: () => modern ? openLocations() : _scaffold.currentState?.openDrawer(),
               onAction: (a) => panelAction(panels[i], a),
+              bottomInset: inset > 0 && (row || i == 1) ? inset : 8,
             );
         final divider = GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -774,12 +836,16 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           child: Container(
             width: row ? div : double.infinity,
             height: row ? double.infinity : div,
-            color: cs.surfaceContainerHighest,
+            // Modern: just air between the cards, with a faint grip.
+            color: modern ? Colors.transparent : cs.surfaceContainerHighest,
             alignment: Alignment.center,
             child: Container(
-              width: row ? 3 : 28,
-              height: row ? 28 : 3,
-              decoration: BoxDecoration(color: cs.outline.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2)),
+              width: row ? (modern ? 4 : 3) : (modern ? 36 : 28),
+              height: row ? (modern ? 36 : 28) : (modern ? 4 : 3),
+              decoration: BoxDecoration(
+                color: modern ? cs.onSurface.withValues(alpha: 0.16) : cs.outline.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
         );
@@ -869,6 +935,173 @@ class _BarButton extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+
+/// Modern styles' bottom bar: floats over the panels and turns into the
+/// selection toolbar when something is selected.
+class _FloatingBar extends StatelessWidget {
+  const _FloatingBar({
+    required this.count,
+    required this.bytes,
+    required this.dir,
+    required this.canSearch,
+    required this.onLocations,
+    required this.onSearch,
+    required this.onMore,
+    required this.onNew,
+    required this.onCopy,
+    required this.onMove,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final int count, bytes;
+  final IconData dir;
+  final bool canSearch;
+  final VoidCallback onLocations, onSearch, onMore, onNew, onCopy, onMove, onRename, onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final spec = store.spec!;
+    final cs = Theme.of(context).colorScheme;
+    final accent = store.accentColor;
+    final shadow = floatShadow(spec);
+
+    Widget round(IconData icon, String tip, VoidCallback onTap, {Color? color, bool filled = false, double size = 46, bool enabled = true}) => Tooltip(
+          message: tip,
+          child: Material(
+            color: filled ? cs.onSurface.withValues(alpha: 0.08) : Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: enabled ? onTap : null,
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: Icon(icon, size: 22, color: (color ?? cs.onSurface).withValues(alpha: enabled ? 1 : 0.3)),
+              ),
+            ),
+          ),
+        );
+
+    Widget withArrow(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+          message: tip,
+          child: InkResponse(
+            onTap: onTap,
+            radius: 26,
+            child: SizedBox(
+              width: 46,
+              height: 46,
+              child: Stack(alignment: Alignment.center, children: [
+                Icon(icon, size: 22, color: cs.onSurface),
+                Positioned(right: 6, bottom: 7, child: Icon(dir, size: 12, color: accent)),
+              ]),
+            ),
+          ),
+        );
+
+    final idle = Row(key: const ValueKey('idle'), children: [
+      DecoratedBox(
+        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: shadow),
+        child: Glass(radius: 31, child: round(Icons.grid_view_rounded, tr('Locații', 'Locations'), onLocations, size: 62)),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: DecoratedBox(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(31), boxShadow: shadow),
+          child: Glass(
+            radius: 31,
+            height: 62,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(31),
+              onTap: onSearch,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Row(children: [
+                  Icon(Icons.search_rounded, color: cs.onSurfaceVariant.withValues(alpha: canSearch ? 1 : 0.4)),
+                  const SizedBox(width: 10),
+                  Text(tr('Caută', 'Search'), style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant.withValues(alpha: canSearch ? 1 : 0.4))),
+                  const Spacer(),
+                  InkResponse(onTap: onMore, radius: 22, child: Icon(Icons.more_horiz_rounded, color: cs.onSurfaceVariant)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Tooltip(
+        message: tr('Nou', 'New'),
+        child: Material(
+          color: accent,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          borderRadius: BorderRadius.circular(22),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: onNew,
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10))]),
+              child: Icon(Icons.add_rounded, size: 28, color: cs.onPrimary),
+            ),
+          ),
+        ),
+      ),
+    ]);
+
+    final selecting = DecoratedBox(
+      key: const ValueKey('sel'),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(32), boxShadow: shadow),
+      child: Glass(
+        radius: 32,
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(children: [
+          Container(
+            height: 46,
+            padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(23)),
+            child: Row(children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: cs.onPrimary.withValues(alpha: 0.16), shape: BoxShape.circle),
+                child: Text('$count', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: cs.onPrimary)),
+              ),
+              if (bytes > 0) ...[
+                const SizedBox(width: 8),
+                Text(fmtSize(bytes), style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: cs.onPrimary, fontFeatures: const [FontFeature.tabularFigures()])),
+              ],
+            ]),
+          ),
+          Expanded(
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+              withArrow(Icons.file_copy_outlined, tr('Copiere', 'Copy'), onCopy),
+              withArrow(Icons.drive_file_move_outline, tr('Mutare', 'Move'), onMove),
+              round(Icons.drive_file_rename_outline, tr('Redenumire', 'Rename'), onRename, enabled: count == 1),
+              round(Icons.delete_outline_rounded, tr('Ștergere', 'Delete'), onDelete, color: cs.error),
+              round(Icons.more_horiz_rounded, tr('Mai mult', 'More'), onMore, filled: true),
+            ]),
+          ),
+        ]),
+      ),
+    );
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, a) => FadeTransition(
+        opacity: a,
+        child: ScaleTransition(scale: Tween(begin: 0.92, end: 1.0).animate(a), child: child),
+      ),
+      child: count > 0 ? selecting : idle,
     );
   }
 }

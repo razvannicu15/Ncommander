@@ -8,6 +8,7 @@ import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/store.dart';
 import 'connections.dart';
+import 'modern.dart';
 import 'widgets.dart';
 
 enum PanelAction {
@@ -68,6 +69,7 @@ class PanelView extends StatefulWidget {
     required this.onOpen,
     required this.onDrawer,
     required this.onAction,
+    this.bottomInset = 8,
   });
 
   final Panel panel;
@@ -76,6 +78,9 @@ class PanelView extends StatefulWidget {
   final void Function(Entry) onOpen;
   final VoidCallback onDrawer;
   final void Function(PanelAction) onAction;
+
+  /// Room left under the list (the floating bar covers the bottom).
+  final double bottomInset;
 
   @override
   State<PanelView> createState() => _PanelViewState();
@@ -142,7 +147,7 @@ class _PanelViewState extends State<PanelView> {
       return;
     }
     // Detailed rows vary in height: jump near it, then centre it exactly.
-    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
+    final h = store.table && !store.modern ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(62 * store.fontScale);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     final target = (idx * h - view / 2 + h / 2).clamp(0.0, _scroll.position.maxScrollExtent);
@@ -162,6 +167,7 @@ class _PanelViewState extends State<PanelView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    if (store.modern) return _modernBuild(cs);
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) {
@@ -410,7 +416,7 @@ class _PanelViewState extends State<PanelView> {
     if (p.entries.isEmpty) {
       final denied = p.error != null;
       body = ListView(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(), children: [
-        if (parent) _parentRow(cs, h),
+        if (parent) store.modern ? _modernParent(cs) : _parentRow(cs, h),
         SizedBox(
           height: 160,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -441,13 +447,14 @@ class _PanelViewState extends State<PanelView> {
         child: ListView.builder(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemExtent: store.table ? h : null,
+          itemExtent: store.table && !store.modern ? h : null,
           itemCount: count,
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.only(bottom: widget.bottomInset, top: store.modern ? 2 : 0),
           itemBuilder: (_, i) {
-            if (parent && i == 0) return _parentRow(cs, h);
+            if (parent && i == 0) return store.modern ? _modernParent(cs) : _parentRow(cs, h);
             final idx = i - (parent ? 1 : 0);
             final e = p.entries[idx];
+            if (store.modern) return _modernRow(cs, e);
             return store.table ? _tableRow(cs, e, h, i) : _row(cs, e, h);
           },
         ),
@@ -461,7 +468,7 @@ class _PanelViewState extends State<PanelView> {
       if (p.loading && p.entries.isNotEmpty)
         const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
     ]);
-    if (!store.table) return stack;
+    if (!store.table || store.modern) return stack;
     return Column(children: [_columns(cs), Expanded(child: stack)]);
   }
 
@@ -729,6 +736,278 @@ class _PanelViewState extends State<PanelView> {
               ),
             ),
           ]),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- modern
+
+  /// Modern styles: the panel is a floating card with an editorial header
+  /// (small path line, big folder name) and soft rounded rows.
+  Widget _modernBuild(ColorScheme cs) {
+    final spec = store.spec!;
+    final accent = store.accentColor;
+    final active = widget.active;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) {
+        if (!active) widget.onActivate();
+      },
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: active ? 1 : (spec.shadow ? 0.92 : 0.84),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: panelCard(spec, accent, active: active),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(27),
+            child: Column(children: [
+              _modernHeader(cs, accent),
+              if (p.filtering) _filterBar(cs),
+              Expanded(
+                child: LayoutBuilder(builder: (_, c) {
+                  _width = c.maxWidth;
+                  return _list(cs);
+                }),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernHeader(ColorScheme cs, Color accent) {
+    final crumbs = p.crumbs();
+    final dim = cs.onSurfaceVariant;
+    final small = TextStyle(fontSize: 12, color: dim);
+    final title = crumbs.last.$1;
+    final info = [
+      if (p.entries.isNotEmpty) itemsText(p.entries.length),
+      if (store.showFreeSpace && p.total > 0) tr('${fmtSize(p.free)} liberi', '${fmtSize(p.free)} free'),
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Path line: every part above the current folder is tappable.
+        SizedBox(
+          height: 22,
+          child: Row(children: [
+            Icon(_rootIcon(), size: 14, color: dim),
+            const SizedBox(width: 4),
+            Expanded(
+              child: ShaderMask(
+                shaderCallback: (r) => const LinearGradient(colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, 0.9, 1]).createShader(r),
+                blendMode: BlendMode.dstIn,
+                child: ListView.builder(
+                  controller: _crumbs,
+                  scrollDirection: Axis.horizontal,
+                  itemCount: crumbs.length - (crumbs.length > 1 ? 1 : 0),
+                  itemBuilder: (_, i) => Row(children: [
+                    if (i > 0) Icon(Icons.chevron_right_rounded, size: 14, color: dim.withValues(alpha: 0.7)),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        widget.onActivate();
+                        p.go(crumbs[i].$2, focus: crumbs[i + 1 < crumbs.length ? i + 1 : i].$1);
+                      },
+                      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3), child: Text(crumbs[i].$1, style: small)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            if (info.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 8, right: 8), child: Text(info, style: small.copyWith(fontFeatures: const [FontFeature.tabularFigures()]))),
+          ]),
+        ),
+        Row(children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: p.atRoot || p.atVolumeRoot
+                  ? null
+                  : () {
+                      widget.onActivate();
+                      p.up();
+                    },
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 25 * store.fontScale, height: 1.15, fontWeight: FontWeight.w600, letterSpacing: -0.5, color: cs.onSurface)),
+            ),
+          ),
+          _pillButton(cs, _sortIcon(), _sortLabel(), () {
+            widget.onActivate();
+            widget.onAction(PanelAction.sort);
+          }),
+          _menu(cs),
+        ]),
+        if (p.tabs.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, right: 8),
+            child: SizedBox(
+              height: 28,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: p.tabs.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (_, i) {
+                  final on = i == p.activeTab;
+                  return GestureDetector(
+                    onTap: () {
+                      widget.onActivate();
+                      p.switchTab(i);
+                    },
+                    onLongPress: () => p.closeTab(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: on ? accent : cs.onSurface.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(p.titleOf(p.tabs[i]),
+                          style: TextStyle(fontSize: 12.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? cs.onPrimary : cs.onSurfaceVariant)),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  String _sortLabel() => switch (p.sort.by) {
+        SortBy.name => tr('Nume', 'Name'),
+        SortBy.ext => tr('Tip', 'Type'),
+        SortBy.size => tr('Mărime', 'Size'),
+        SortBy.date => tr('Dată', 'Date'),
+      };
+
+  Widget _pillButton(ColorScheme cs, IconData icon, String label, VoidCallback onTap) => Material(
+        color: cs.onSurface.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 11),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 15, color: cs.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.85))),
+              Icon(p.sort.asc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 12, color: cs.onSurfaceVariant),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _modernParent(ColorScheme cs) {
+    final s = store.fontScale;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          widget.onActivate();
+          p.up();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          child: Row(children: [
+            Container(
+              width: 38 * s,
+              height: 38 * s,
+              decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.arrow_upward_rounded, size: 19 * s, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(width: 12),
+            Text('..', style: TextStyle(fontSize: 16 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _modernRow(ColorScheme cs, Entry e) {
+    final sel = p.selected.contains(e.path);
+    final flash = _flash == e.name;
+    final s = store.fontScale;
+    final accent = store.accentColor;
+    final selecting = p.hasSelection;
+    final meta = [if (!e.isDir) fmtSize(e.size), fmtShortDate(e.modified)].join(' · ');
+
+    return Padding(
+      key: e.name == p.focusName ? _focusKey : null,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            widget.onActivate();
+            if (selecting) {
+              p.toggle(e);
+            } else {
+              widget.onOpen(e);
+            }
+          },
+          onLongPress: () {
+            widget.onActivate();
+            HapticFeedback.selectionClick();
+            if (selecting && !sel) {
+              p.selectRange(e);
+            } else {
+              p.toggle(e);
+            }
+          },
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: flash ? 120 : 260),
+            curve: Curves.easeOutCubic,
+            color: sel
+                ? accent.withValues(alpha: 0.16)
+                : flash
+                    ? cs.tertiary.withValues(alpha: 0.16)
+                    : Colors.transparent,
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: store.compact ? 7 : 9),
+            child: Row(children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  widget.onActivate();
+                  HapticFeedback.selectionClick();
+                  p.toggle(e);
+                },
+                child: Opacity(opacity: e.hidden ? 0.55 : 1, child: EntryIcon(e, size: 38 * s, selected: sel)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    e.name,
+                    style: TextStyle(
+                      fontSize: 15 * s,
+                      height: 1.22,
+                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w500,
+                      color: sel ? Color.lerp(accent, cs.onSurface, 0.25) : (e.hidden ? cs.onSurfaceVariant : cs.onSurface),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(meta,
+                      style: TextStyle(
+                        fontSize: 12 * s,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      )),
+                ]),
+              ),
+            ]),
+          ),
         ),
       ),
     );

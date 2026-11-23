@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
+import '../core/styles.dart';
 import '../core/themes.dart';
 import '../services/native.dart';
 import '../services/store.dart';
@@ -101,7 +102,31 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               ),
             ),
           ),
-          SectionTitle(tr('Aspect', 'Appearance')),
+          SectionTitle(tr('Stil', 'Style')),
+          SizedBox(
+            height: 176,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: UiStyle.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final st = UiStyle.values[i];
+                return StylePreview(style: st, selected: store.uiStyle == st, onTap: () => _set(() => store.uiStyle = st));
+              },
+            ),
+          ),
+          if (store.modern) ...[
+            SectionTitle(tr('Accent', 'Accent')),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(spacing: 12, children: [
+                for (final c in store.spec!.accents)
+                  ColorDot(Color(c), selected: store.accentColor.toARGB32() == c, onTap: () => _set(() => store.accent = c)),
+              ]),
+            ),
+          ] else ...[
+            SectionTitle(tr('Aspect', 'Appearance')),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: SizedBox(
@@ -137,6 +162,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               },
             ),
           ),
+          ],
           SectionTitle(tr('Panouri', 'Panels')),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),

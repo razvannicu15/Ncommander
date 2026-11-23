@@ -16,6 +16,8 @@ import 'package:ncommander/ui/editor_page.dart';
 import 'package:ncommander/ui/search_page.dart';
 import 'package:ncommander/ui/settings_page.dart';
 import 'package:ncommander/ui/zip_page.dart';
+import 'package:ncommander/ui/locations_page.dart';
+import 'package:ncommander/core/styles.dart';
 
 final fontsDir = Platform.environment['SCREEN_FONTS'];
 late Directory root;
@@ -39,6 +41,11 @@ Future<void> loadFonts() async {
     }
   }
   await mono.load();
+  final geist = FontLoader('Geist');
+  for (final w in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+    geist.addFont(Future.value(ByteData.view(File('assets/fonts/Geist-$w.ttf').readAsBytesSync().buffer)));
+  }
+  await geist.load();
   final flutterRoot = Platform.environment['FLUTTER_ROOT'] ??
       File(Platform.resolvedExecutable).parent.parent.parent.parent.parent.parent.path;
   final icons = File('$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
@@ -254,6 +261,43 @@ void main() {
       await shot(t, '19_theme_${id}_${b.name}');
     }
     store.themeId = 'amber';
+
+    // Modern styles.
+    store.conns
+      ..clear()
+      ..addAll([
+        Conn(id: 'g1', type: ConnType.gdrive, name: 'Drive personal', account: 'razvan@example.com'),
+        Conn(id: 'o1', type: ConnType.onedrive, name: 'OneDrive', account: 'Răzvan'),
+        Conn(id: 'f1', type: ConnType.ftp, name: 'noraz.ro', host: 'ftp.example.com', user: 'web', tls: true),
+      ]);
+    for (final st in [UiStyle.aurora, UiStyle.porcelain, UiStyle.oled]) {
+      store.uiStyle = st;
+      store.accent = 0;
+      final b = styleSpecs[st]!.brightness;
+      await setup(t);
+      await commander(t, b, left: 'Download', select: st == UiStyle.porcelain ? [] : ['concert.mp4', 'poze_vacanta.zip']);
+      await shot(t, '20_style_${st.name}');
+    }
+    store.uiStyle = UiStyle.aurora;
+    await setup(t, size: const Size(2176, 1812), dpr: 2.6);
+    await commander(t, Brightness.dark, left: 'Download', right: 'DCIM/Camera', select: ['config.json']);
+    await shot(t, '21_style_aurora_fold');
+    await setup(t);
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(app(LocationsPage(current: home, onConnMenu: (_, __) async {}, onSettings: () {}), Brightness.dark));
+    await t.pump(const Duration(milliseconds: 400));
+    await shot(t, '22_locations_aurora');
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(app(const SettingsPage(), Brightness.dark));
+    await t.pump(const Duration(milliseconds: 300));
+    await shot(t, '23_settings_aurora');
+    store.uiStyle = UiStyle.porcelain;
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(app(LocationsPage(current: home, onConnMenu: (_, __) async {}, onSettings: () {}), Brightness.light));
+    await t.pump(const Duration(milliseconds: 400));
+    await shot(t, '24_locations_porcelain');
+    store.uiStyle = UiStyle.classic;
+    store.conns.clear();
 
     store.language = 'en';
     setLanguage('en');
