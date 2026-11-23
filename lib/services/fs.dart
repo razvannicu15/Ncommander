@@ -15,6 +15,11 @@ import 'remote_ops.dart';
 /// "ftp://<connId>/folder/file" (also gdrive:// and onedrive://).
 bool isRemote(String path) => path.contains('://');
 
+/// Paths use "/" everywhere; Windows listings come back with "\".
+String np(String p) => Platform.isWindows ? p.replaceAll(r'\', '/') : p;
+
+final _drive = RegExp(r'^[A-Za-z]:/?$');
+
 /// "ftp://id" for "ftp://id/a/b"; "/" for local paths.
 String rootOf(String path) {
   final i = path.indexOf('://');
@@ -34,8 +39,11 @@ String parentOf(String path) {
     return i <= root.length ? root : path.substring(0, i);
   }
   if (path == '/' || path.isEmpty) return '/';
+  // Windows drive root ("C:/") is its own parent.
+  if (_drive.hasMatch(path)) return '${path.substring(0, 2)}/';
   final p = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
   final i = p.lastIndexOf('/');
+  if (i == 2 && p[1] == ':') return p.substring(0, 3);
   return i <= 0 ? '/' : p.substring(0, i);
 }
 
@@ -72,9 +80,10 @@ ListResult listDirSync(String dir) {
           final t = FileStat.statSync(e.path);
           if (t.type != FileSystemEntityType.notFound) st = t;
         }
+        final path = np(e.path);
         out.add(Entry(
-          path: e.path,
-          name: nameOf(e.path),
+          path: path,
+          name: nameOf(path),
           isDir: st.type == FileSystemEntityType.directory,
           size: st.type == FileSystemEntityType.directory ? 0 : st.size,
           modified: st.modified,
@@ -378,7 +387,7 @@ class FileOps {
       job.touched.add(dst);
       final children = Directory(src).listSync(followLinks: false);
       for (final c in children) {
-        await _copyAny(job, c.path, join(dst, nameOf(c.path)), move: move);
+        await _copyAny(job, c.path, join(dst, nameOf(np(c.path))), move: move);
       }
       if (move) {
         try {
@@ -589,11 +598,12 @@ void _zipWorker(List<Object?> a) {
   for (final s in sources) {
     final base = parentOf(s);
     if (FileSystemEntity.isDirectorySync(s)) {
-      items.add((s, s.substring(base.length + (base == '/' ? 0 : 1)), true));
+      final cut = base.length + (base.endsWith('/') ? 0 : 1);
+      items.add((s, s.substring(cut), true));
       try {
         for (final e in Directory(s).listSync(recursive: true, followLinks: false)) {
-          final rel = e.path.substring(base.length + (base == '/' ? 0 : 1));
-          items.add((e.path, rel, e is Directory));
+          final p = np(e.path);
+          items.add((p, p.substring(cut), e is Directory));
         }
       } catch (e) {
         errors.add('$s: $e');

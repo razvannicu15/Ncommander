@@ -158,6 +158,16 @@ class _PanelViewState extends State<PanelView> {
     });
   }
 
+  void _press(Entry e, bool selecting, bool sel) {
+    widget.onActivate();
+    HapticFeedback.selectionClick();
+    if (selecting && !sel) {
+      p.selectRange(e);
+    } else {
+      p.toggle(e);
+    }
+  }
+
   bool get _showParent => store.showParent && !p.atRoot && !p.atVolumeRoot && p.filter.isEmpty;
 
   @override
@@ -569,15 +579,9 @@ class _PanelViewState extends State<PanelView> {
             widget.onOpen(e);
           }
         },
-        onLongPress: () {
-          widget.onActivate();
-          HapticFeedback.selectionClick();
-          if (selecting && !sel) {
-            p.selectRange(e);
-          } else {
-            p.toggle(e);
-          }
-        },
+        // Long press on touch, right click with a mouse.
+        onLongPress: () => _press(e, selecting, sel),
+        onSecondaryTap: () => _press(e, selecting, sel),
         child: AnimatedContainer(
           duration: Duration(milliseconds: flash ? 120 : 380),
           decoration: BoxDecoration(
@@ -709,15 +713,9 @@ class _PanelViewState extends State<PanelView> {
             widget.onOpen(e);
           }
         },
-        onLongPress: () {
-          widget.onActivate();
-          HapticFeedback.selectionClick();
-          if (selecting && !sel) {
-            p.selectRange(e);
-          } else {
-            p.toggle(e);
-          }
-        },
+        // Long press on touch, right click with a mouse.
+        onLongPress: () => _press(e, selecting, sel),
+        onSecondaryTap: () => _press(e, selecting, sel),
         child: AnimatedContainer(
           duration: Duration(milliseconds: flash ? 120 : 380),
           color: sel

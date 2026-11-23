@@ -31,6 +31,7 @@ echo    [2] Instaleaza pe telefon     - prin cablu USB
 echo    [3] Deschide folderul cu APK
 echo    [4] Actualizeaza codul din GitHub
 echo    [5] Build local               - doar daca ai Flutter instalat
+echo    [6] Versiunea WINDOWS         - descarca, instaleaza si porneste
 echo    [0] Iesire
 echo.
 set "CH="
@@ -40,6 +41,7 @@ if "%CH%"=="2" goto install
 if "%CH%"=="3" goto open
 if "%CH%"=="4" goto update
 if "%CH%"=="5" goto local
+if "%CH%"=="6" goto windows
 if "%CH%"=="0" exit /b 0
 goto menu
 
@@ -110,6 +112,36 @@ rem ------------------------------------------------------------ 5. local
 call :need_flutter || goto pause_menu
 call :ensure_repo || goto pause_menu
 call :build_apk
+goto pause_menu
+
+rem ---------------------------------------------------------- 6. windows
+:windows
+set "WIN_DIR=%APP_DIR%\win"
+set "WZIP=%OUT_DIR%\Ncommander-windows.zip"
+if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
+echo.
+echo   Descarc Ncommander-windows.zip ...
+curl -L -f --progress-bar -o "%WZIP%.part" "%DL_URL%/Ncommander-windows.zip"
+if errorlevel 1 (
+  del /q "%WZIP%.part" >nul 2>&1
+  echo   Descarcarea a esuat. Verifica build-ul: https://github.com/razvannicu15/ncommander/actions
+  goto pause_menu
+)
+move /y "%WZIP%.part" "%WZIP%" >nul
+taskkill /im Ncommander.exe /f >nul 2>&1
+if exist "%WIN_DIR%" rmdir /s /q "%WIN_DIR%"
+mkdir "%WIN_DIR%"
+tar -xf "%WZIP%" -C "%WIN_DIR%"
+if errorlevel 1 (
+  echo   Dezarhivarea a esuat.
+  goto pause_menu
+)
+powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\Ncommander.lnk'); $s.TargetPath='%WIN_DIR%\Ncommander.exe'; $s.WorkingDirectory='%WIN_DIR%'; $s.Save()" >nul 2>&1
+echo.
+echo   ======  GATA  ======
+echo   Instalat in: %WIN_DIR%
+echo   Scurtatura: Desktop\Ncommander
+start "" "%WIN_DIR%\Ncommander.exe"
 goto pause_menu
 
 rem ============================================================ helpers

@@ -8,6 +8,7 @@ import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import '../services/win.dart';
 import 'connections.dart';
 
 /// Storage volumes, common folders and bookmarks.
@@ -37,14 +38,23 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final cur = widget.panel.path;
-    final home = volumes.primary;
+    final home = Platform.isWindows ? winHome : volumes.primary;
     final common = <(String, IconData, String)>[
-      ('Download', Icons.download_rounded, tr('Descărcări', 'Downloads')),
-      ('DCIM', Icons.photo_camera_outlined, tr('Cameră', 'Camera')),
-      ('Pictures', Icons.image_outlined, tr('Imagini', 'Pictures')),
-      ('Documents', Icons.description_outlined, tr('Documente', 'Documents')),
-      ('Music', Icons.music_note_outlined, tr('Muzică', 'Music')),
-      ('Movies', Icons.movie_outlined, tr('Filme', 'Movies')),
+      if (Platform.isWindows) ...[
+        ('Desktop', Icons.desktop_windows_outlined, tr('Desktop', 'Desktop')),
+        ('Downloads', Icons.download_rounded, tr('Descărcări', 'Downloads')),
+        ('Documents', Icons.description_outlined, tr('Documente', 'Documents')),
+        ('Pictures', Icons.image_outlined, tr('Imagini', 'Pictures')),
+        ('Music', Icons.music_note_outlined, tr('Muzică', 'Music')),
+        ('Videos', Icons.movie_outlined, tr('Videoclipuri', 'Videos')),
+      ] else ...[
+        ('Download', Icons.download_rounded, tr('Descărcări', 'Downloads')),
+        ('DCIM', Icons.photo_camera_outlined, tr('Cameră', 'Camera')),
+        ('Pictures', Icons.image_outlined, tr('Imagini', 'Pictures')),
+        ('Documents', Icons.description_outlined, tr('Documente', 'Documents')),
+        ('Music', Icons.music_note_outlined, tr('Muzică', 'Music')),
+        ('Movies', Icons.movie_outlined, tr('Filme', 'Movies')),
+      ],
     ].where((c) => Directory(join(home, c.$1)).existsSync()).toList();
 
     Widget item(IconData icon, String label, String path, {String? sub, Widget? trailing, VoidCallback? onLong}) {
@@ -127,8 +137,10 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
               onPressed: () => setState(() => store.toggleBookmark(b.path, b.name)),
             ),
           ),
-        head(tr('Sistem', 'System')),
-        item(Icons.storage_rounded, tr('Rădăcină', 'Root'), '/', sub: '/'),
+        if (!Platform.isWindows) ...[
+          head(tr('Sistem', 'System')),
+          item(Icons.storage_rounded, tr('Rădăcină', 'Root'), '/', sub: '/'),
+        ],
         const SizedBox(height: 24),
       ],
     );

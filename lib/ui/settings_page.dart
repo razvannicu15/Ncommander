@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
@@ -89,7 +91,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           ? Text('…', style: TextStyle(color: cs.onSurfaceVariant))
           : newer
               ? FilledButton.tonal(
-                  onPressed: () => Native.openUrl('https://github.com/$_repo/releases/download/latest/Ncommander-android.apk'),
+                  onPressed: () => Native.openUrl('https://github.com/$_repo/releases/download/latest/${Platform.isWindows ? 'Ncommander-windows.zip' : 'Ncommander-android.apk'}'),
                   child: Text(tr('Descarcă', 'Download')),
                 )
               : Text(tr('La zi', 'Up to date'), style: TextStyle(fontWeight: FontWeight.w600, color: cs.primary)),
@@ -107,7 +109,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
       appBar: AppBar(title: Text(tr('Setări', 'Settings'))),
       body: MaxWidth(
         child: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
-          if (_access == false) ...[
+          if (_access == false && !Platform.isWindows) ...[
             const SizedBox(height: 12),
             Group(
               padding: EdgeInsets.zero,
@@ -244,7 +246,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                   style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
             ),
             _switch(cs, Icons.density_small_rounded, tr('Spațiere redusă', 'Tight spacing'), store.compact, (v) => store.compact = v),
-            _switch(cs, Icons.photo_outlined, tr('Miniaturi', 'Thumbnails'), store.thumbnails, (v) => store.thumbnails = v),
+            if (!Platform.isWindows) _switch(cs, Icons.photo_outlined, tr('Miniaturi', 'Thumbnails'), store.thumbnails, (v) => store.thumbnails = v),
             _switch(cs, Icons.create_new_folder_outlined, tr('Folderele primele', 'Folders first'), store.foldersFirst, (v) => store.foldersFirst = v),
             _switch(cs, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), store.showHidden, (v) => store.showHidden = v),
             _switch(cs, Icons.arrow_upward_rounded, tr('Rândul „..”', '".." row'), store.showParent, (v) => store.showParent = v),
@@ -262,6 +264,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               subtitle: Text(tr('Fără reclame · by norAz', 'No ads · by norAz')),
             ),
             _updateTile(cs),
+            if (!Platform.isWindows)
             ListTile(
               leading: Icon(_access == true ? Icons.verified_user_outlined : Icons.lock_outline_rounded),
               title: Text(tr('Acces la fișiere', 'File access')),

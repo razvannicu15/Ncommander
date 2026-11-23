@@ -50,7 +50,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final home = volumes.primary;
+    final home = volumes.home;
     panels = [Panel(0, _valid(store.left), home), Panel(1, _valid(store.right), home)];
     for (final p in panels) {
       p.addListener(_onPanel);
@@ -67,7 +67,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (s == null) return null;
     for (final t in s.tabs) {
       final ok = isRemote(t.path) ? connOf(t.path) != null : Directory(t.path).existsSync();
-      if (!ok) t.path = volumes.primary;
+      if (!ok) t.path = volumes.home;
     }
     return s;
   }
@@ -560,7 +560,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         : null;
 
     final actions = <Widget>[
-      if (has) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
+      if (has && !Platform.isWindows) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
       if (single != null && !single.isDir) tile('with', Icons.open_in_new_rounded, tr('Deschide cu', 'Open with')),
       if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
       if (has) tile('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties')),
@@ -656,6 +656,34 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   // ---------------------------------------------------------------- back
 
+  /// Total Commander keys for keyboards and Windows.
+  Map<ShortcutActivator, VoidCallback> _keys() {
+    bool any() => cur.selected.isNotEmpty;
+    return {
+      const SingleActivator(LogicalKeyboardKey.f5): () => any() ? copyMove(false) : null,
+      const SingleActivator(LogicalKeyboardKey.f6): () => any() ? copyMove(true) : null,
+      const SingleActivator(LogicalKeyboardKey.f6, shift: true): () => cur.selected.length == 1 ? rename() : null,
+      const SingleActivator(LogicalKeyboardKey.f2): () => cur.selected.length == 1 ? rename() : null,
+      const SingleActivator(LogicalKeyboardKey.f7): createNew,
+      const SingleActivator(LogicalKeyboardKey.f8): () => any() ? delete() : null,
+      const SingleActivator(LogicalKeyboardKey.delete): () => any() ? delete() : null,
+      const SingleActivator(LogicalKeyboardKey.tab): () => activatePanel(1 - active),
+      const SingleActivator(LogicalKeyboardKey.backspace): () => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null,
+      const SingleActivator(LogicalKeyboardKey.escape): () {
+        if (cur.hasSelection) {
+          cur.clearSelection();
+        } else if (cur.filtering) {
+          cur.toggleFiltering();
+        }
+      },
+      const SingleActivator(LogicalKeyboardKey.keyA, control: true): () => panelAction(cur, PanelAction.selectAll),
+      const SingleActivator(LogicalKeyboardKey.keyR, control: true): () => panelAction(cur, PanelAction.refresh),
+      const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => panelAction(cur, PanelAction.filter),
+      const SingleActivator(LogicalKeyboardKey.keyT, control: true): () => panelAction(cur, PanelAction.newTab),
+      const SingleActivator(LogicalKeyboardKey.keyW, control: true): () => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null,
+    };
+  }
+
   void _back() {
     if (_scaffold.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -732,13 +760,19 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
             }
           },
         ),
-        body: SafeArea(
+        body: CallbackShortcuts(
+          bindings: _keys(),
+          child: Focus(
+            autofocus: true,
+            child: SafeArea(
           bottom: false,
           child: Column(children: [
             Expanded(child: _panels(cs)),
             JobBar(runner: runner),
             _bottomBar(cs),
           ]),
+        ),
+          ),
         ),
       ),
     );

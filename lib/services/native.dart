@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
+
+import 'win.dart';
 
 class Volume {
   Volume({required this.path, required this.label, required this.removable, required this.primary, this.total = 0, this.free = 0});
@@ -30,11 +33,16 @@ class Native {
 
   /// Wallpaper accent on Android 12+, otherwise null.
   static Future<Color?> systemAccent() async {
+    if (Platform.isWindows) {
+      final c = await winAccent();
+      return c == null ? null : Color(c);
+    }
     final v = await _call<int>('systemAccent');
     return v == null ? null : Color(v);
   }
 
   static Future<List<Volume>> volumes() async {
+    if (Platform.isWindows) return winVolumes();
     final r = await _call<List<Object?>>('volumes');
     if (r == null) return [];
     return [
@@ -52,16 +60,19 @@ class Native {
 
   /// [total, free] bytes of the volume holding [path].
   static Future<(int, int)> space(String path) async {
+    if (Platform.isWindows) return winSpace(path);
     final r = await _call<List<Object?>>('space', path);
     if (r == null || r.length < 2) return (0, 0);
     return ((r[0] as num).toInt(), (r[1] as num).toInt());
   }
 
   /// Opens with the default app; false when no app can open it.
-  static Future<bool> open(String path, String mime, {bool chooser = false}) async =>
-      (await _call<bool>('open', {'path': path, 'mime': mime, 'chooser': chooser})) ?? false;
+  static Future<bool> open(String path, String mime, {bool chooser = false}) async => Platform.isWindows
+      ? winOpen(path, chooser: chooser)
+      : (await _call<bool>('open', {'path': path, 'mime': mime, 'chooser': chooser})) ?? false;
 
-  static Future<void> share(List<String> paths, String mime) => _call('share', {'paths': paths, 'mime': mime});
+  static Future<void> share(List<String> paths, String mime) =>
+      Platform.isWindows ? winOpen(paths.first, chooser: true) : _call('share', {'paths': paths, 'mime': mime});
 
   static Future<void> scan(List<String> paths) => _call('scan', paths);
 
@@ -83,7 +94,7 @@ class Native {
     });
   }
 
-  static Future<void> openUrl(String url) => _call('openUrl', url);
+  static Future<void> openUrl(String url) => Platform.isWindows ? winOpenUrl(url) : _call('openUrl', url);
 
   /// Google Drive access token. With [interactive] the account picker /
   /// consent screen may show; without it null means "needs the user".

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
@@ -29,7 +31,8 @@ Future<Conn?> addConnection(BuildContext context) async {
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         SheetTitle(tr('Conexiune nouă', 'New connection')),
-        for (final t in ConnType.values)
+        // On Windows, Google Drive and OneDrive already show up as folders or drives.
+        for (final t in ConnType.values.where((t) => !Platform.isWindows || t == ConnType.ftp))
           ListTile(
             leading: Icon(connIcon(t)),
             title: Text(connLabel(t)),

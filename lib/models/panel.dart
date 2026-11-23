@@ -9,6 +9,7 @@ import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/store.dart';
 import '../services/vfs.dart';
+import '../services/win.dart';
 import 'entry.dart';
 
 /// Storage volumes (internal, SD card, USB), refreshed on start and resume.
@@ -32,7 +33,11 @@ class Volumes extends ValueNotifier<List<Volume>> {
     return best;
   }
 
+  /// Where a fresh panel opens: the user folder on Windows, internal storage on Android.
+  String get home => Platform.isWindows ? winHome : primary;
+
   String label(Volume v) {
+    if (Platform.isWindows) return '${v.label.isNotEmpty ? v.label : tr('Disc local', 'Local disk')} (${v.path.substring(0, 2)})';
     if (v.primary) return tr('Memorie internă', 'Internal storage');
     if (v.label.isNotEmpty) return v.label;
     return v.removable ? tr('Card SD', 'SD card') : nameOf(v.path);

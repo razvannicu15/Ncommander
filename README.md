@@ -51,3 +51,9 @@ Pe PC: rulează **`Ncommander.bat`** (de oriunde, chiar și de pe Desktop):
 Toate build-urile sunt semnate cu aceeași cheie (`tool/debug.keystore`), așa că un APK nou se instalează peste cel vechi.
 
 La prima pornire aplicația cere **acces la toate fișierele** (necesar pentru un manager de fișiere pe Android 11+).
+
+## Windows
+
+`Ncommander-windows.zip` din release-ul „latest” (sau opțiunea **[6]** din `Ncommander.bat`, care îl instalează în `D:\Apps\Ncommander\win` și pune o scurtătură pe Desktop).
+Discuri locale și de rețea, FTP, aceleași teme. Google Drive și OneDrive apar deja ca foldere pe Windows, așa că lipsesc din „Conexiune nouă”.
+Taste Total Commander: F5 copiere, F6 mutare, Shift+F6/F2 redenumire, F7 nou, F8/Delete ștergere, Tab panoul celălalt, Backspace folderul părinte, Ctrl+A tot, Ctrl+F filtru, Ctrl+T/W tab nou/închide, Ctrl+R reîmprospătare. Click dreapta = selectare.

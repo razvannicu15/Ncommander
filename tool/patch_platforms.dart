@@ -109,4 +109,13 @@ subprojects {
     kt.copySync('${ktDir.path}/MainActivity.kt');
     stdout.writeln('copied MainActivity.kt');
   }
+
+  // Windows runner: window title and a size that fits two panels.
+  patch('windows/runner/main.cpp', (s) => s
+      .replaceAll('L"ncommander"', 'L"Ncommander"')
+      .replaceAll('Win32Window::Size size(1280, 720);', 'Win32Window::Size size(1360, 860);'));
+  patch('windows/runner/Runner.rc', (s) => s
+      .replaceAll('"CompanyName", "ro.noraz"', '"CompanyName", "norAz"')
+      .replaceAll('"FileDescription", "ncommander"', '"FileDescription", "Ncommander"')
+      .replaceAll('"ProductName", "ncommander"', '"ProductName", "Ncommander"'));
 }

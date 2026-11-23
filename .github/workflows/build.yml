@@ -123,3 +123,46 @@ jobs:
             gh release edit latest -R "$REPO" --notes "Versiunea 0.1.$((100 + GITHUB_RUN_NUMBER)) din $(TZ=Europe/Bucharest date +'%d.%m.%Y %H:%M') (commit ${GITHUB_SHA::7}). Versiunea apare in Setari > Despre."
           fi
           gh release upload "$TAG" Ncommander-android.apk -R "$REPO" --clobber
+
+  windows:
+    name: Windows EXE
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform files
+        run: flutter create --platforms=windows --org ro.noraz --project-name ncommander .
+
+      - run: flutter pub get
+
+      - name: Patch runner
+        run: dart run tool/patch_platforms.dart
+
+      - name: App icon
+        run: dart run flutter_launcher_icons
+
+      - name: Build
+        run: |
+          BUILD=$((100 + GITHUB_RUN_NUMBER))
+          BUILT=$(TZ=Europe/Bucharest date +'%d.%m %H:%M')
+          flutter build windows --release --build-number=$BUILD --build-name=0.1.$BUILD \
+            --dart-define=BUILD=$BUILD --dart-define="BUILT=$BUILT"
+          mv build/windows/x64/runner/Release/ncommander.exe build/windows/x64/runner/Release/Ncommander.exe
+          cd build/windows/x64/runner/Release && 7z a -tzip "$GITHUB_WORKSPACE/Ncommander-windows.zip" . >/dev/null
+          ls -la "$GITHUB_WORKSPACE/Ncommander-windows.zip"
+
+      - name: Publish
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        run: |
+          gh release view latest -R "$REPO" >/dev/null 2>&1 || \
+            gh release create latest -R "$REPO" --target "$GITHUB_SHA" --latest \
+              --title "Ncommander - ultima versiune" --notes "Build automat." || true
+          gh release upload latest Ncommander-windows.zip -R "$REPO" --clobber
