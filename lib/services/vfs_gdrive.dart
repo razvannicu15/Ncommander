@@ -247,8 +247,9 @@ class GDriveVfs extends Vfs {
 
 /// Google OAuth client of type "Desktop app" (Windows build). Google treats
 /// the secret of installed apps as public; it can't be kept secret anyway.
-const googleDesktopId = '';
-const googleDesktopSecret = '';
+/// Both come from the repository secrets at build time (--dart-define).
+const googleDesktopId = String.fromEnvironment('GOOGLE_DESKTOP_ID');
+const googleDesktopSecret = String.fromEnvironment('GOOGLE_DESKTOP_SECRET');
 
 /// Signs in to Google Drive; returns (e-mail, refresh token). On the phone the
 /// account comes from Android (no token kept); on Windows from the browser.

@@ -151,11 +151,15 @@ jobs:
         run: dart run flutter_launcher_icons
 
       - name: Build
+        env:
+          GOOGLE_DESKTOP_ID: ${{ secrets.GOOGLE_DESKTOP_ID }}
+          GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
         run: |
           BUILD=$((100 + GITHUB_RUN_NUMBER))
           BUILT=$(TZ=Europe/Bucharest date +'%d.%m %H:%M')
           flutter build windows --release --build-number=$BUILD --build-name=0.1.$BUILD \
-            --dart-define=BUILD=$BUILD --dart-define="BUILT=$BUILT"
+            --dart-define=BUILD=$BUILD --dart-define="BUILT=$BUILT" \
+            --dart-define="GOOGLE_DESKTOP_ID=$GOOGLE_DESKTOP_ID" --dart-define="GOOGLE_DESKTOP_SECRET=$GOOGLE_DESKTOP_SECRET"
           mv build/windows/x64/runner/Release/ncommander.exe build/windows/x64/runner/Release/Ncommander.exe
           cd build/windows/x64/runner/Release && 7z a -tzip "$GITHUB_WORKSPACE/Ncommander-windows.zip" . >/dev/null
           ls -la "$GITHUB_WORKSPACE/Ncommander-windows.zip"
