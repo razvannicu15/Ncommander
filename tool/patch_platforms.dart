@@ -15,6 +15,22 @@ void patch(String path, String Function(String) change) {
 }
 
 void main() {
+  if (Directory('android').existsSync()) _android();
+  _windows();
+}
+
+void _windows() {
+  // Windows runner: window title and a size that fits two panels.
+  patch('windows/runner/main.cpp', (s) => s
+      .replaceAll('L"ncommander"', 'L"Ncommander"')
+      .replaceAll('Win32Window::Size size(1280, 720);', 'Win32Window::Size size(1360, 860);'));
+  patch('windows/runner/Runner.rc', (s) => s
+      .replaceAll('"CompanyName", "ro.noraz"', '"CompanyName", "norAz"')
+      .replaceAll('"FileDescription", "ncommander"', '"FileDescription", "Ncommander"')
+      .replaceAll('"ProductName", "ncommander"', '"ProductName", "Ncommander"'));
+}
+
+void _android() {
   patch('android/app/src/main/AndroidManifest.xml', (s) {
     const perms = [
       '<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>',
@@ -109,13 +125,4 @@ subprojects {
     kt.copySync('${ktDir.path}/MainActivity.kt');
     stdout.writeln('copied MainActivity.kt');
   }
-
-  // Windows runner: window title and a size that fits two panels.
-  patch('windows/runner/main.cpp', (s) => s
-      .replaceAll('L"ncommander"', 'L"Ncommander"')
-      .replaceAll('Win32Window::Size size(1280, 720);', 'Win32Window::Size size(1360, 860);'));
-  patch('windows/runner/Runner.rc', (s) => s
-      .replaceAll('"CompanyName", "ro.noraz"', '"CompanyName", "norAz"')
-      .replaceAll('"FileDescription", "ncommander"', '"FileDescription", "Ncommander"')
-      .replaceAll('"ProductName", "ncommander"', '"ProductName", "Ncommander"'));
 }

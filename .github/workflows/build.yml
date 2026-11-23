@@ -139,7 +139,8 @@ jobs:
           cache: true
 
       - name: Generate platform files
-        run: flutter create --platforms=windows --org ro.noraz --project-name ncommander .
+        # android/ too: the icon generator expects it.
+        run: flutter create --platforms=windows,android --org ro.noraz --project-name ncommander .
 
       - run: flutter pub get
 
