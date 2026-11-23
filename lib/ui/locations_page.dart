@@ -126,8 +126,9 @@ class _LocationsPageState extends State<LocationsPage> {
               children: [for (final v in vols) volumeCard(v)],
             ),
             section(tr('Cloud și rețea', 'Cloud & network')),
-            Container(
-              decoration: box(),
+            Material(
+              color: card,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: border)),
               clipBehavior: Clip.antiAlias,
               child: Column(children: [
                 for (final c in store.conns) ...[
@@ -208,8 +209,9 @@ class _LocationsPageState extends State<LocationsPage> {
             ],
             if (store.bookmarks.isNotEmpty) ...[
               section(tr('Favorite', 'Bookmarks')),
-              Container(
-                decoration: box(),
+              Material(
+                color: card,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: border)),
                 clipBehavior: Clip.antiAlias,
                 child: Column(children: [
                   for (final b in store.bookmarks)
