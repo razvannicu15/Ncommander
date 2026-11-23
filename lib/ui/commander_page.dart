@@ -887,6 +887,66 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     }
   }
 
+  Widget _tool(ColorScheme cs, IconData icon, String tip, VoidCallback onTap, {int badge = 0}) => Tooltip(
+        message: tip,
+        waitDuration: const Duration(milliseconds: 400),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: onTap,
+          child: SizedBox(
+            width: 34,
+            height: 28,
+            child: Center(
+              child: Badge(
+                isLabelVisible: badge > 0,
+                label: Text('$badge'),
+                offset: const Offset(8, -6),
+                child: Icon(icon, size: 18, color: cs.onSurfaceVariant),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// Select all / by mask / invert / none, above the selection icon.
+  Future<void> _selectMenu(BuildContext ctx) async {
+    final box = ctx.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final at = box.localToGlobal(Offset.zero, ancestor: overlay);
+    PopupMenuItem<String> item(String id, IconData icon, String label, String keys) => PopupMenuItem(
+          value: id,
+          height: 36,
+          child: Row(children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5))),
+            const SizedBox(width: 20),
+            Text(keys, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ]),
+        );
+    final r = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & box.size, Offset.zero & overlay.size),
+      items: [
+        item('all', Icons.select_all_rounded, tr('Selectează tot', 'Select all'), 'Ctrl+A'),
+        item('mask', Icons.rule_rounded, tr('După mască…', 'By mask…'), 'Num +'),
+        item('invert', Icons.flip_rounded, tr('Inversează selecția', 'Invert selection'), 'Num *'),
+        item('none', Icons.deselect_rounded, tr('Deselectează', 'Clear selection'), 'Esc'),
+      ],
+    );
+    switch (r) {
+      case 'all':
+        cur.selectAll();
+      case 'mask':
+        final m = await askMask(context);
+        if (m != null) cur.selectMask(m.$1, add: m.$2);
+      case 'invert':
+        cur.invert();
+      case 'none':
+        cur.clearSelection();
+    }
+  }
+
   /// Total Commander's function-key bar (desktop).
   Widget _fnBar(ColorScheme cs) {
     Widget key(String k, String label, VoidCallback onTap, {bool danger = false}) => Expanded(
@@ -920,19 +980,22 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         key('F6', tr('Mutare', 'Move'), () => _target() ? copyMove(true) : null),
         key('F7', tr('Nou', 'New'), createNew),
         key('F8', tr('Ștergere', 'Delete'), () => _target() ? delete() : null, danger: true),
+        // Panel tools as small icons on a slightly different background
+        // (the touch "More" sheet isn't needed with a mouse and right click).
         Container(
-          width: 56,
-          decoration: BoxDecoration(border: Border(left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6))),
-          child: InkWell(
-            onTap: more,
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.more_horiz_rounded, size: 20),
-              if (cur.selected.isNotEmpty) ...[
-                const SizedBox(width: 3),
-                Text('${cur.selected.length}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.primary)),
-              ],
-            ]),
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            border: Border(left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6)),
           ),
+          child: Row(children: [
+            _tool(cs, Icons.swap_horiz_rounded, tr('Inversează panourile (Ctrl+U)', 'Swap panels (Ctrl+U)'), swap),
+            _tool(cs, Icons.drag_handle_rounded, tr('Același folder în celălalt panou', 'Same folder in the other panel'), () => other.go(cur.path)),
+            _tool(cs, Icons.tab_rounded, tr('Tab nou (Ctrl+T)', 'New tab (Ctrl+T)'), () => cur.newTab()),
+            Builder(builder: (ctx) => _tool(cs, Icons.checklist_rounded, tr('Selecție', 'Selection'), () => _selectMenu(ctx), badge: cur.selected.length)),
+            _tool(cs, Icons.settings_outlined, tr('Setări', 'Settings'), openSettings),
+          ]),
         ),
       ]),
     );
