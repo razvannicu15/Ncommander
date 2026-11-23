@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -50,6 +51,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (Platform.isWindows) _drives = Timer.periodic(const Duration(seconds: 4), (_) => volumes.refresh());
     final home = volumes.home;
     panels = [Panel(0, _valid(store.left), home), Panel(1, _valid(store.right), home)];
     for (final p in panels) {
@@ -74,8 +76,12 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   void _onPanel() => setState(() {});
 
+  /// Windows: notice USB sticks and network drives coming and going.
+  Timer? _drives;
+
   @override
   void dispose() {
+    _drives?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     for (final p in panels) {
       p.dispose();

@@ -134,6 +134,7 @@ class Store extends ChangeNotifier {
   bool showParent = true;
   bool confirmDelete = true;
   bool showFreeSpace = true;
+  bool driveBar = true;
   double fontScale = 1.0;
 
   final List<Bookmark> bookmarks = [];
@@ -193,6 +194,7 @@ class Store extends ChangeNotifier {
     showParent = s['parent'] ?? true;
     confirmDelete = s['confirmDel'] ?? true;
     showFreeSpace = s['free'] ?? true;
+    driveBar = s['drives'] ?? true;
     fontScale = ((s['font'] as num?)?.toDouble() ?? 1.0).clamp(0.85, 1.25);
     bookmarks
       ..clear()
@@ -227,6 +229,7 @@ class Store extends ChangeNotifier {
           'parent': showParent,
           'confirmDel': confirmDelete,
           'free': showFreeSpace,
+          'drives': driveBar,
           'font': fontScale,
         },
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),

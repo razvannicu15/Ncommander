@@ -18,7 +18,9 @@ class Volumes extends ValueNotifier<List<Volume>> {
 
   Future<void> refresh() async {
     final v = await Native.volumes();
-    if (v.isNotEmpty) value = v;
+    if (v.isEmpty) return;
+    String sig(List<Volume> l) => l.map((x) => '${x.path}|${x.label}|${x.free ~/ (1 << 26)}').join(',');
+    if (sig(v) != sig(value)) value = v;
   }
 
   String get primary => value.firstWhere((v) => v.primary, orElse: () => value.isNotEmpty ? value.first : _fallback).path;
@@ -241,7 +243,13 @@ class Panel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Last folder visited on each Windows drive, so a drive button returns there.
+  final Map<String, String> lastOnDrive = {};
+
   Future<void> go(String newPath, {String? focus}) async {
+    if (Platform.isWindows && !isRemote(path) && path.length > 2 && path[1] == ':') {
+      lastOnDrive[path.substring(0, 2).toUpperCase()] = path;
+    }
     tab.path = newPath;
     filter = '';
     filtering = false;

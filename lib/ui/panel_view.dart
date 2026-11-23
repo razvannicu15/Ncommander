@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +9,7 @@ import '../core/themes.dart';
 import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
+import '../services/native.dart';
 import '../services/store.dart';
 import 'connections.dart';
 import 'widgets.dart';
@@ -213,6 +216,7 @@ class _PanelViewState extends State<PanelView> {
       child: Container(
         color: cs.surface,
         child: Column(children: [
+          if (Platform.isWindows && store.driveBar) _driveBar(cs),
           _header(cs),
           if (p.filtering) _filterBar(cs),
           // The inactive panel steps back a little.
@@ -303,6 +307,71 @@ class _PanelViewState extends State<PanelView> {
           Positioned.fill(child: ColoredBox(color: track)),
           FractionallySizedBox(widthFactor: usage, child: AnimatedContainer(duration: const Duration(milliseconds: 200), color: fill)),
         ]),
+      ),
+    );
+  }
+
+  /// Total Commander's drive buttons: one per disk, the current one lit.
+  Widget _driveBar(ColorScheme cs) => ValueListenableBuilder(
+        valueListenable: volumes,
+        builder: (context, list, _) {
+          final cur = !p.remote && p.path.length > 1 && p.path[1] == ':' ? p.path.substring(0, 2).toUpperCase() : null;
+          return Container(
+            height: 32,
+            color: cs.surfaceContainerLow,
+            child: Row(children: [
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  children: [
+                    for (final v in list) _driveButton(cs, v, v.path.substring(0, 2) == cur),
+                  ],
+                ),
+              ),
+              if (cur != null && p.total > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6, right: 10),
+                  child: Text(tr('${fmtSize(p.free)} liber din ${fmtSize(p.total)}', '${fmtSize(p.free)} free of ${fmtSize(p.total)}'),
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
+                ),
+            ]),
+          );
+        },
+      );
+
+  Widget _driveButton(ColorScheme cs, Volume v, bool on) {
+    final letter = v.path.substring(0, 2);
+    final icon = v.removable ? Icons.usb_rounded : (v.label.isEmpty && !v.primary ? Icons.lan_outlined : Icons.storage_rounded);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Tooltip(
+        message: volumes.label(v),
+        waitDuration: const Duration(milliseconds: 500),
+        child: Material(
+          color: on ? cs.primary.withValues(alpha: 0.16) : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+            side: BorderSide(color: on ? cs.primary.withValues(alpha: 0.6) : cs.outlineVariant.withValues(alpha: 0.7), width: 0.8),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () {
+              widget.onActivate();
+              final last = p.lastOnDrive[letter.toUpperCase()];
+              p.go(on ? v.path : (last != null && Directory(last).existsSync() ? last : v.path));
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 14, color: on ? cs.primary : cs.onSurfaceVariant),
+                const SizedBox(width: 4),
+                Text(letter.substring(0, 1).toLowerCase(),
+                    style: TextStyle(fontSize: 12.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: on ? cs.primary : cs.onSurface)),
+              ]),
+            ),
+          ),
+        ),
       ),
     );
   }

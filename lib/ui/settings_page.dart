@@ -251,6 +251,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             _switch(cs, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), store.showHidden, (v) => store.showHidden = v),
             _switch(cs, Icons.arrow_upward_rounded, tr('Rândul „..”', '".." row'), store.showParent, (v) => store.showParent = v),
             _switch(cs, Icons.pie_chart_outline_rounded, tr('Bară de ocupare', 'Usage bar'), store.showFreeSpace, (v) => store.showFreeSpace = v),
+            if (Platform.isWindows) _switch(cs, Icons.storage_rounded, tr('Butoane de discuri', 'Drive buttons'), store.driveBar, (v) => store.driveBar = v),
           ])),
           SectionTitle(tr('Siguranță', 'Safety')),
           Group(padding: EdgeInsets.zero, children: [
