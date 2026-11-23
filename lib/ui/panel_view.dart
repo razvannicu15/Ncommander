@@ -180,13 +180,17 @@ class _PanelViewState extends State<PanelView> {
   int _seenCursor = 0;
   final _cursorKey = GlobalKey();
 
+  // Separate key for grid tiles: sharing one would hand a tile's animation
+  // state (rounded border) to a list row when the view changes.
+  final _gridKey = GlobalKey();
+
   /// The cursor shows on the active panel once a keyboard is in use (always on Windows).
   bool get _showCursor => widget.active && keyboardUsed.value;
 
   /// Keeps the cursor row on screen, scrolling as little as possible.
   void _scrollToCursor() {
     if (!mounted || !_scroll.hasClients) return;
-    final c = _cursorKey.currentContext;
+    final c = (store.grid ? _gridKey : _cursorKey).currentContext;
     if (c != null && c.mounted) {
       Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
       Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
@@ -205,7 +209,7 @@ class _PanelViewState extends State<PanelView> {
     final view = _scroll.position.viewportDimension;
     _scroll.jumpTo((idx * h - view / 2).clamp(0.0, _scroll.position.maxScrollExtent));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c2 = _cursorKey.currentContext;
+      final c2 = (store.grid ? _gridKey : _cursorKey).currentContext;
       if (c2 != null && c2.mounted) Scrollable.ensureVisible(c2, alignment: 0.5);
     });
   }
@@ -709,7 +713,7 @@ class _PanelViewState extends State<PanelView> {
         onLongPress: () => _press(e, p.hasSelection, sel),
         onSecondaryTap: () => _press(e, p.hasSelection, sel),
         child: AnimatedContainer(
-          key: cur ? _cursorKey : null,
+          key: cur ? _gridKey : null,
           duration: const Duration(milliseconds: 160),
           margin: const EdgeInsets.all(3),
           padding: const EdgeInsets.all(6),
