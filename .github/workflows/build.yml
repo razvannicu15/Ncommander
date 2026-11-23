@@ -160,6 +160,15 @@ jobs:
           cd build/windows/x64/runner/Release && 7z a -tzip "$GITHUB_WORKSPACE/Ncommander-windows.zip" . >/dev/null
           ls -la "$GITHUB_WORKSPACE/Ncommander-windows.zip"
 
+      - name: Smoke test (starts and keeps running)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "build\windows\x64\runner\Release\Ncommander.exe" -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { Write-Error "Ncommander.exe exited with code $($p.ExitCode)"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Ncommander.exe ran for 12 s"
+
       - name: Publish
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
         run: |

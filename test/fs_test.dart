@@ -20,6 +20,17 @@ FileOps ops([ConflictAction a = ConflictAction.overwrite, bool all = true]) =>
     FileOps((_) async => ConflictAnswer(a, forAll: all));
 
 void main() {
+  test('Windows drive paths', () {
+    expect(parentOf('C:/Users'), 'C:/');
+    expect(parentOf('C:/Users/ana/Downloads'), 'C:/Users/ana');
+    expect(parentOf('C:/'), 'C:/');
+    expect(parentOf('D:'), 'D:/');
+    expect(join('C:/', 'Users'), 'C:/Users');
+    expect(nameOf('C:/Users/ana'), 'ana');
+    expect(isInside('C:/Users/ana', 'C:/'), isTrue);
+    expect(isInside('D:/x', 'C:/'), isFalse);
+  });
+
   setUp(() {
     setLanguage('ro');
     tmp = Directory.systemTemp.createTempSync('nc_');
