@@ -166,7 +166,7 @@ class _LocationsDrawerState extends State<LocationsDrawer> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Row(children: [
-              Icon(v.primary ? Icons.smartphone_rounded : (v.removable ? Icons.sd_card_outlined : Icons.usb_rounded),
+              Icon(Platform.isWindows ? (v.removable ? Icons.usb_rounded : Icons.storage_rounded) : (v.primary ? Icons.smartphone_rounded : (v.removable ? Icons.sd_card_outlined : Icons.usb_rounded)),
                   color: on ? cs.onSecondaryContainer : cs.onSurfaceVariant),
               const SizedBox(width: 16),
               Expanded(

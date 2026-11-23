@@ -30,9 +30,19 @@ $sh = New-Object -ComObject WScript.Shell
 $sh.SendKeys("{DOWN}{DOWN}{INSERT}{INSERT}")
 Start-Sleep -Seconds 2
 Shot "win_02_selection"
-$sh.SendKeys("^m")
+$sh.SendKeys("{F2}")
 Start-Sleep -Seconds 3
 Shot "win_03_multirename"
+$sh.SendKeys("{ESC}")
+Start-Sleep -Seconds 2
+$sh.SendKeys("^m")
+Start-Sleep -Seconds 3
+Shot "win_03b_ctrl_m"
+$sh.SendKeys("{ESC}")
+Start-Sleep -Seconds 1
+$sh.SendKeys("{F7}")
+Start-Sleep -Seconds 2
+Shot "win_06_new"
 $sh.SendKeys("{ESC}")
 Start-Sleep -Seconds 1
 $sh.SendKeys("%{F1}")

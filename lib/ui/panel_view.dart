@@ -49,9 +49,15 @@ double _textW(BuildContext context, String t, double size) {
 (double, double) tableCols(BuildContext context, double width) {
   final f = 12.5 * store.fontScale * fz;
   final sizeW = _textW(context, '999,9 MB', f) + 12;
-  final dateW = _textW(context, '22.11.2026', f) + 14;
+  final dateW = _textW(context, desktop ? '22.11.2026 14:05' : '22.11.2026', f) + 14;
   final icon = 12 + 24 * store.fontScale * dz + 12;
   return (sizeW, width - icon - sizeW - dateW - 12 >= 110 ? dateW : 0);
+}
+
+/// Desktop date column, always complete: "23.11.2026 06:31".
+String fmtDeskDate(DateTime d) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
 }
 
 const _monthsRo = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
@@ -775,10 +781,11 @@ class _PanelViewState extends State<PanelView> {
             ),
             SizedBox(
               width: sizeW,
-              child: Text(e.isDir ? '' : fmtSize(e.size), textAlign: TextAlign.right, maxLines: 1, style: num),
+              child: Text(e.isDir ? (desktop ? '<DIR>' : '') : fmtSize(e.size),
+                  textAlign: TextAlign.right, maxLines: 1, style: e.isDir ? num.copyWith(color: dim.withValues(alpha: 0.6)) : num),
             ),
             if (dateW > 0)
-              SizedBox(width: dateW, child: Text(fmtListDate(e.modified), textAlign: TextAlign.right, maxLines: 1, style: num)),
+              SizedBox(width: dateW, child: Text(desktop ? fmtDeskDate(e.modified) : fmtListDate(e.modified), textAlign: TextAlign.right, maxLines: 1, style: num)),
           ]),
         ),
       ),

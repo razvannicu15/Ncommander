@@ -737,8 +737,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         key('F6', tr('Mutare', 'Move'), () => _target() ? copyMove(true) : null),
         key('F7', tr('Nou', 'New'), createNew),
         key('F8', tr('Ștergere', 'Delete'), () => _target() ? delete() : null, danger: true),
-        SizedBox(
-          width: 44,
+        Container(
+          width: 56,
+          decoration: BoxDecoration(border: Border(left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6))),
           child: IconButton(
             tooltip: tr('Mai mult', 'More'),
             visualDensity: VisualDensity.compact,
