@@ -16,12 +16,14 @@ IconData connIcon(ConnType t) => switch (t) {
       ConnType.ftp => Icons.dns_outlined,
       ConnType.gdrive => Icons.add_to_drive_rounded,
       ConnType.onedrive => Icons.cloud_outlined,
+      ConnType.zip => Icons.folder_zip_outlined,
     };
 
 String connSubtitle(Conn c) => switch (c.type) {
       ConnType.ftp => '${c.tls ? 'FTPS' : 'FTP'} · ${c.user.isEmpty ? '' : '${c.user}@'}${c.host}${c.port == 21 ? '' : ':${c.port}'}',
       ConnType.gdrive => 'Google Drive · ${c.account}',
       ConnType.onedrive => 'OneDrive · ${c.account}',
+      ConnType.zip => c.host,
     };
 
 /// Picks the type, then sets it up. Returns the new connection.
@@ -32,7 +34,7 @@ Future<Conn?> addConnection(BuildContext context) async {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         SheetTitle(tr('Conexiune nouă', 'New connection')),
         // On Windows, Google Drive and OneDrive already show up as folders or drives.
-        for (final t in ConnType.values.where((t) => !Platform.isWindows || t == ConnType.ftp))
+        for (final t in ConnType.values.where((t) => !Platform.isWindows || t == ConnType.ftp).where((t) => t != ConnType.zip))
           ListTile(
             leading: Icon(connIcon(t)),
             title: Text(connLabel(t)),
@@ -296,3 +298,66 @@ Future<bool> confirmRemoveConn(BuildContext context, Conn c) async {
   await store.save();
   return true;
 }
+
+/// Total Commander's FTP connect dialog (Ctrl+F): the saved FTP servers,
+/// connect / new / edit / remove. Returns the server to open.
+Future<Conn?> ftpConnectDialog(BuildContext context) => showDialog<Conn>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final cs = Theme.of(ctx).colorScheme;
+        final ftp = store.conns.where((c) => c.type == ConnType.ftp).toList();
+        return AlertDialog(
+          icon: const Icon(Icons.dns_outlined),
+          title: Text(tr('Conectare FTP', 'FTP connect')),
+          contentPadding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
+          content: SizedBox(
+            width: 480,
+            child: ftp.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(tr('Niciun server salvat.', 'No saved servers.'), textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+                  )
+                : ListView(shrinkWrap: true, children: [
+                    for (final (i, c) in ftp.indexed)
+                      ListTile(
+                        autofocus: i == 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        leading: Icon(c.tls ? Icons.lock_outline_rounded : Icons.dns_outlined),
+                        title: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(connSubtitle(c), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () => Navigator.pop(ctx, c),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          IconButton(
+                            tooltip: tr('Editează', 'Edit'),
+                            icon: const Icon(Icons.edit_outlined, size: 20),
+                            onPressed: () async {
+                              await editFtp(ctx, c);
+                              set(() {});
+                            },
+                          ),
+                          IconButton(
+                            tooltip: tr('Elimină', 'Remove'),
+                            icon: Icon(Icons.delete_outline, size: 20, color: cs.error),
+                            onPressed: () async {
+                              await confirmRemoveConn(ctx, c);
+                              set(() {});
+                            },
+                          ),
+                        ]),
+                      ),
+                  ]),
+          ),
+          actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(tr('Server nou', 'New server')),
+              onPressed: () async {
+                final c = await editFtp(ctx);
+                if (c != null && ctx.mounted) Navigator.pop(ctx, c);
+              },
+            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Închide', 'Close'))),
+          ],
+        );
+      }),
+    );

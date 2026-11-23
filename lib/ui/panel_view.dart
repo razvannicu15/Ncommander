@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/file_types.dart';
 import '../core/format.dart';
 import '../core/i18n.dart';
 import '../core/platform.dart';
@@ -59,6 +60,10 @@ String fmtDeskDate(DateTime d) {
   String two(int v) => v.toString().padLeft(2, '0');
   return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
 }
+
+/// Separate "Ext" column like Total Commander (desktop, wide enough panels).
+double extCol(BuildContext context, double width) =>
+    desktop && width >= 420 ? _textW(context, 'xlsx', 12.5 * store.fontScale * fz) + 22 : 0;
 
 const _monthsRo = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
 const _monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -190,8 +195,13 @@ class _PanelViewState extends State<PanelView> {
     // Row not built yet (Page Down, End): jump near it, then settle.
     final i = p.entries.indexWhere((e) => e.name == p.cursor);
     if (i < 0) return;
-    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
-    final idx = i + (_showParent ? 1 : 0);
+    final grid = store.grid;
+    final h = grid
+        ? (_width / p.gridCols) / 0.8
+        : store.table
+            ? rowHeight(context)
+            : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
+    final idx = (i + (_showParent ? 1 : 0)) ~/ (grid ? p.gridCols : 1);
     final view = _scroll.position.viewportDimension;
     _scroll.jumpTo((idx * h - view / 2).clamp(0.0, _scroll.position.maxScrollExtent));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -632,6 +642,26 @@ class _PanelViewState extends State<PanelView> {
           ]),
         ),
       ]);
+    } else if (store.grid) {
+      final ext = desktop ? 150.0 : 118.0;
+      p.gridCols = (_width / ext).ceil().clamp(1, 99);
+      body = Scrollbar(
+        controller: _scroll,
+        interactive: true,
+        thickness: 6,
+        radius: const Radius.circular(3),
+        child: GridView.builder(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 12),
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: ext, childAspectRatio: 0.8),
+          itemCount: count,
+          itemBuilder: (_, i) {
+            if (parent && i == 0) return _parentTile(cs);
+            return _tile(cs, p.entries[i - (parent ? 1 : 0)]);
+          },
+        ),
+      );
     } else {
       body = Scrollbar(
         controller: _scroll,
@@ -661,9 +691,77 @@ class _PanelViewState extends State<PanelView> {
       if (p.loading && p.entries.isNotEmpty)
         const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
     ]);
-    if (!store.table) return stack;
+    if (!store.table || store.grid) return stack;
     return Column(children: [_columns(cs), Expanded(child: stack)]);
   }
+
+  // ------------------------------------------------------------- thumbnails
+
+  Widget _tile(ColorScheme cs, Entry e) {
+    final sel = p.selected.contains(e.path);
+    final cur = e.name == p.cursor && _showCursor;
+    final image = e.kind == Kind.image && e.ext != 'svg' && !p.remote;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _click(e, p.hasSelection),
+        onLongPress: () => _press(e, p.hasSelection, sel),
+        onSecondaryTap: () => _press(e, p.hasSelection, sel),
+        child: AnimatedContainer(
+          key: cur ? _cursorKey : null,
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.all(3),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: sel ? cs.primary.withValues(alpha: 0.14) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: cur ? Border.all(color: cs.primary, width: 1.5) : null,
+          ),
+          child: Column(children: [
+            Expanded(
+              child: image
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        File(e.path),
+                        cacheWidth: 280,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => Center(child: EntryIcon(e, size: 52 * dz + 10, solid: true)),
+                      ),
+                    )
+                  : Center(child: EntryIcon(e, size: 52 * dz + 10, selected: sel, solid: true)),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              e.name,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12 * store.fontScale * fz, height: 1.2, color: sel ? cs.primary : (e.hidden ? cs.onSurfaceVariant : cs.onSurface)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _parentTile(ColorScheme cs) => InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          widget.onActivate();
+          if (_double('..')) p.up();
+        },
+        child: Column(children: [
+          Expanded(child: Center(child: Icon(Icons.subdirectory_arrow_left_rounded, size: 40, color: cs.onSurfaceVariant))),
+          const SizedBox(height: 6),
+          Text('..', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 14),
+        ]),
+      );
 
   // ----------------------------------------------------------------- table
 
@@ -672,6 +770,7 @@ class _PanelViewState extends State<PanelView> {
   /// Column header: tap to sort, tap again to reverse (like TC).
   Widget _columns(ColorScheme cs) {
     final (sizeW, dateW) = tableCols(context, _width);
+    final extW = extCol(context, _width);
     final s = store.fontScale;
     Widget head(String label, SortBy by, {double? width, TextAlign align = TextAlign.left}) {
       final on = p.sort.by == by;
@@ -705,7 +804,11 @@ class _PanelViewState extends State<PanelView> {
       ),
       padding: EdgeInsets.only(left: 12 + 24 * s * dz + 12, right: 12),
       child: Row(children: [
-        head(p.sort.by == SortBy.ext ? tr('Nume · ext', 'Name · ext') : tr('Nume', 'Name'), p.sort.by == SortBy.ext ? SortBy.ext : SortBy.name),
+        if (extW > 0) ...[
+          head(tr('Nume', 'Name'), SortBy.name),
+          head(tr('Ext', 'Ext'), SortBy.ext, width: extW),
+        ] else
+          head(p.sort.by == SortBy.ext ? tr('Nume · ext', 'Name · ext') : tr('Nume', 'Name'), p.sort.by == SortBy.ext ? SortBy.ext : SortBy.name),
         head(tr('Mărime', 'Size'), SortBy.size, width: sizeW, align: TextAlign.right),
         if (dateW > 0) head(tr('Dată', 'Date'), SortBy.date, width: dateW, align: TextAlign.right),
       ]),
@@ -717,6 +820,8 @@ class _PanelViewState extends State<PanelView> {
     final flash = _flash == e.name;
     final s = store.fontScale;
     final (sizeW, dateW) = tableCols(context, _width);
+    final extW = extCol(context, _width);
+    final split = extW > 0 && !e.isDir && e.ext.isNotEmpty;
     final selecting = p.hasSelection;
     final dim = cs.onSurfaceVariant;
     final num = TextStyle(fontSize: 12.5 * s * fz, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()]);
@@ -769,7 +874,7 @@ class _PanelViewState extends State<PanelView> {
             ),
             Expanded(
               child: Text(
-                e.name,
+                split ? e.name.substring(0, e.name.length - e.ext.length - 1) : e.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -779,6 +884,15 @@ class _PanelViewState extends State<PanelView> {
                 ),
               ),
             ),
+            if (extW > 0)
+              SizedBox(
+                width: extW,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(split ? e.name.substring(e.name.length - e.ext.length) : '',
+                      maxLines: 1, overflow: TextOverflow.clip, style: num.copyWith(color: sel ? cs.primary : cs.onSurface.withValues(alpha: 0.8))),
+                ),
+              ),
             SizedBox(
               width: sizeW,
               child: Text(e.isDir ? (desktop ? '<DIR>' : '') : fmtSize(e.size),

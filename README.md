@@ -64,5 +64,8 @@ Taste Total Commander (merg și cu tastatură pe telefon); comenzile lucrează p
 - Tab panoul celălalt, Alt+F1 / Alt+F2 locații stânga / dreapta, Ctrl+D locații, Ctrl+U inversează panourile
 - Ctrl+←/→ deschide folderul de sub cursor în panoul stâng / drept
 - Num+ selectează după mască, Num− deselectează, Num* inversează, Ctrl+A tot, Esc anulează selecția
-- Ctrl+F filtru, Ctrl+H fișiere ascunse, Ctrl+T / Ctrl+W tab nou / închide, Ctrl+Tab tab următor, Ctrl+R reîmprospătare
+- Ctrl+F conectare FTP (lista serverelor), Ctrl+Shift+F deconectare, Ctrl+N server nou
+- Enter / Ctrl+PgDn pe un .zip intră în arhivă ca într-un folder (F5 copiază afară, Backspace iese)
+- Ctrl+F1 compact, Ctrl+F2 detaliat, Ctrl+Shift+F1 miniaturi
+- Ctrl+S filtru, Ctrl+H fișiere ascunse, Ctrl+T / Ctrl+W tab nou / închide, Ctrl+Tab tab următor, Ctrl+R reîmprospătare
 - click dreapta = selectare

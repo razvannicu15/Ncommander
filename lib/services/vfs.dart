@@ -5,6 +5,7 @@ import 'store.dart';
 import 'vfs_ftp.dart';
 import 'vfs_gdrive.dart';
 import 'vfs_onedrive.dart';
+import 'vfs_zip.dart';
 
 /// Called with bytes transferred since the last call.
 typedef OnBytes = void Function(int delta);
@@ -65,6 +66,7 @@ Vfs? vfsFor(String path) {
     ConnType.ftp => FtpVfs(c),
     ConnType.gdrive => GDriveVfs(c),
     ConnType.onedrive => OneDriveVfs(c),
+    ConnType.zip => ZipVfs(c),
   };
   return _cache[id] = v;
 }
@@ -94,4 +96,5 @@ String connLabel(ConnType t) => switch (t) {
       ConnType.ftp => 'FTP',
       ConnType.gdrive => 'Google Drive',
       ConnType.onedrive => 'OneDrive',
+      ConnType.zip => 'ZIP',
     };

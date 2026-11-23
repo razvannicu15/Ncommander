@@ -90,6 +90,9 @@ class Panel extends ChangeNotifier {
   String? cursor;
   int cursorTick = 0;
 
+  /// Tiles per row in the thumbnail grid (arrow keys move by a row).
+  int gridCols = 1;
+
   Entry? get cursorEntry {
     if (cursor == null) return entries.isEmpty ? null : entries.first;
     return entries.where((e) => e.name == cursor).firstOrNull ?? (entries.isEmpty ? null : entries.first);
@@ -126,7 +129,13 @@ class Panel extends ChangeNotifier {
   bool get atRoot => path == '/';
 
   /// Top of internal storage / SD card: nothing useful above it.
-  bool get atVolumeRoot => isRemote(path) ? path == rootOf(path) : volumes.of(path)?.path == path;
+  bool get atVolumeRoot => isRemote(path) ? path == rootOf(path) && !inZip : volumes.of(path)?.path == path;
+
+  /// Browsing inside a ZIP archive.
+  bool get inZip => path.startsWith('zip://');
+
+  /// The archive file behind a zip:// path.
+  String? get zipFile => inZip ? conn?.host : null;
 
   bool get remote => isRemote(path);
 
@@ -262,6 +271,12 @@ class Panel extends ChangeNotifier {
 
   Future<void> up() async {
     if (atRoot) return;
+    // Leaving an archive: back to its folder, on the archive.
+    final z = zipFile;
+    if (z != null && path == rootOf(path)) {
+      await go(parentOf(z), focus: nameOf(z));
+      return;
+    }
     await go(parentOf(path), focus: nameOf(path));
   }
 
@@ -411,10 +426,17 @@ class Panel extends ChangeNotifier {
   }
 
   /// "Memorie internă / Download / Telegram" style crumbs: (label, path).
-  List<(String, String)> crumbs() {
-    if (remote) {
+  List<(String, String)> crumbs() => _crumbsOf(path);
+
+  List<(String, String)> _crumbsOf(String path) {
+    if (isRemote(path)) {
       final root = rootOf(path);
-      final out = <(String, String)>[(conn?.name ?? '?', root)];
+      final c = connOf(path);
+      // In an archive the path continues from the folder that holds it.
+      final out = <(String, String)>[
+        if (c?.type == ConnType.zip) ..._crumbsOf(parentOf(c!.host)),
+        (c?.name ?? '?', root),
+      ];
       var cur = root;
       for (final part in relOf(path).split('/').where((s) => s.isNotEmpty)) {
         cur = join(cur, part);

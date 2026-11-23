@@ -19,6 +19,24 @@ function Shot($name) {
   $bmp.Save((Join-Path $Out "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
   $g.Dispose(); $bmp.Dispose()
 }
+# Demo files in the user folder (where the panels open).
+$home0 = $env:USERPROFILE
+$colors = @('SteelBlue','Coral','SeaGreen')
+for ($i = 1; $i -le 3; $i++) {
+  $bm = New-Object System.Drawing.Bitmap 320, 240
+  $gr = [System.Drawing.Graphics]::FromImage($bm)
+  $gr.Clear([System.Drawing.Color]::FromName($colors[$i-1]))
+  $gr.FillEllipse([System.Drawing.Brushes]::White, 100, 60, 120, 120)
+  $bm.Save((Join-Path $home0 "img$i.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+  $gr.Dispose(); $bm.Dispose()
+}
+"Ncommander demo" | Out-File (Join-Path $home0 "notes.txt")
+New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "zipsrc\docs") | Out-Null
+"a" | Out-File (Join-Path $env:TEMP "zipsrc\docs\readme.md")
+"b" | Out-File (Join-Path $env:TEMP "zipsrc\config.json")
+Copy-Item (Join-Path $home0 "img1.png") (Join-Path $env:TEMP "zipsrc\photo.png")
+Compress-Archive -Path (Join-Path $env:TEMP "zipsrc\*") -DestinationPath (Join-Path $home0 "demo.zip") -Force
+
 $p = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds 10
 $p.Refresh()
@@ -50,6 +68,21 @@ Start-Sleep -Seconds 2
 Shot "win_04_locations"
 $sh.SendKeys("{ESC}")
 Start-Sleep -Seconds 1
+$sh.SendKeys("^+{F1}")
+Start-Sleep -Seconds 3
+Shot "win_07_thumbnails"
+$sh.SendKeys("^{F1}")
+Start-Sleep -Seconds 1
+$sh.SendKeys("^f")
+Start-Sleep -Seconds 2
+Shot "win_08_ftp"
+$sh.SendKeys("{ESC}")
+Start-Sleep -Seconds 1
+$sh.SendKeys("{END}{UP}{UP}{UP}{UP}{UP}{ENTER}")
+Start-Sleep -Seconds 3
+Shot "win_09_zip"
+$sh.SendKeys("{BACKSPACE}")
+Start-Sleep -Seconds 2
 [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null   # restore to default size
 Start-Sleep -Seconds 2
 Shot "win_05_window"

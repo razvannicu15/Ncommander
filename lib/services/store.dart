@@ -13,7 +13,8 @@ enum PanelLayout { auto, sideBySide, stacked }
 /// Theme colours offered in Settings (no pink unless asked for).
 const themeColors = <int>[0xFFD9822B, 0xFF2B5CE6, 0xFF0E7C66, 0xFF3F51B5, 0xFF6750A4, 0xFF00838F, 0xFFB3261E, 0xFF5D6B7A];
 
-enum ConnType { ftp, gdrive, onedrive }
+/// zip: an archive opened in a panel (not saved; [Conn.host] is the zip's path).
+enum ConnType { ftp, gdrive, onedrive, zip }
 
 /// A saved network / cloud location. Lives in the app's private storage.
 class Conn {
@@ -135,6 +136,9 @@ class Store extends ChangeNotifier {
   bool confirmDelete = true;
   bool showFreeSpace = true;
   bool driveBar = true;
+
+  /// Thumbnail grid (TC Ctrl+Shift+F1); wins over [table].
+  bool grid = false;
   double fontScale = 1.0;
 
   final List<Bookmark> bookmarks = [];
@@ -145,7 +149,17 @@ class Store extends ChangeNotifier {
   static const _oneDriveApp = 'b77159ec-a8e2-40f0-abc2-ba0525f04ac4';
   String onedriveClientId = _oneDriveApp;
 
-  Conn? conn(String id) => conns.where((c) => c.id == id).firstOrNull;
+  Conn? conn(String id) => conns.where((c) => c.id == id).firstOrNull ?? zips[id];
+
+  /// Archives open in panels (session only).
+  final Map<String, Conn> zips = {};
+
+  /// "zip://<id>" root for browsing the archive at [zipPath] like a folder.
+  String zipRoot(String zipPath) {
+    final id = 'z${zipPath.hashCode.toUnsigned(32).toRadixString(36)}${zipPath.length}';
+    zips[id] ??= Conn(id: id, type: ConnType.zip, name: zipPath.substring(zipPath.lastIndexOf('/') + 1), host: zipPath);
+    return 'zip://$id';
+  }
   PanelSaved? left, right;
   int activePanel = 0;
 
@@ -195,6 +209,7 @@ class Store extends ChangeNotifier {
     confirmDelete = s['confirmDel'] ?? true;
     showFreeSpace = s['free'] ?? true;
     driveBar = s['drives'] ?? true;
+    grid = s['grid'] ?? false;
     fontScale = ((s['font'] as num?)?.toDouble() ?? 1.0).clamp(0.85, 1.25);
     bookmarks
       ..clear()
@@ -230,6 +245,7 @@ class Store extends ChangeNotifier {
           'confirmDel': confirmDelete,
           'free': showFreeSpace,
           'drives': driveBar,
+          'grid': grid,
           'font': fontScale,
         },
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),

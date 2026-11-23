@@ -219,14 +219,18 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: SizedBox(
               width: double.infinity,
-              child: SegmentedButton<bool>(
+              child: SegmentedButton<int>(
                 showSelectedIcon: false,
                 segments: [
-                  ButtonSegment(value: false, icon: const Icon(Icons.view_list_outlined), label: Text(tr('Detaliat', 'Detailed'))),
-                  ButtonSegment(value: true, icon: const Icon(Icons.table_rows_outlined), label: Text(tr('Compact', 'Compact'))),
+                  ButtonSegment(value: 0, icon: const Icon(Icons.view_list_outlined), label: Text(tr('Detaliat', 'Detailed'))),
+                  ButtonSegment(value: 1, icon: const Icon(Icons.table_rows_outlined), label: Text(tr('Compact', 'Compact'))),
+                  ButtonSegment(value: 2, icon: const Icon(Icons.grid_view_rounded), label: Text(tr('Miniaturi', 'Thumbnails'))),
                 ],
-                selected: {store.table},
-                onSelectionChanged: (s) => _set(() => store.table = s.first),
+                selected: {store.grid ? 2 : (store.table ? 1 : 0)},
+                onSelectionChanged: (s) => _set(() {
+                  store.grid = s.first == 2;
+                  if (s.first < 2) store.table = s.first == 1;
+                }),
               ),
             ),
           ),

@@ -136,7 +136,12 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     }
     final k = e.kind;
     if (k == Kind.archive && e.ext == 'zip') {
-      await _zipSheet(e);
+      // Total Commander: Enter goes into the archive.
+      if (desktop) {
+        await cur.go(store.zipRoot(e.path));
+      } else {
+        await _zipSheet(e);
+      }
     } else if (k == Kind.image && e.ext != 'svg') {
       final imgs = cur.entries.where((x) => !x.isDir && x.kind == Kind.image && x.ext != 'svg').toList();
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImagePage(images: imgs, start: imgs.indexOf(e))));
@@ -271,7 +276,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (!mounted || r == null) return;
     switch (r) {
       case 'browse':
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ZipPage(path: e.path, extractTo: other.remote ? here : other.path, onExtract: runner.add)));
+        // Inside the panel, like a folder (copy out with Copy / F5).
+        await cur.go(store.zipRoot(e.path));
       case 'named':
         runner.add(Job(JobKind.extract, [e.path], target: named));
       case 'here':
@@ -680,6 +686,25 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   late final Map<ShortcutActivator, VoidCallback> _keymap = _keys();
 
+  void _setView({bool table = false, bool grid = false}) {
+    store.grid = grid;
+    if (!grid) store.table = table;
+    store.save();
+    for (final p in panels) {
+      p.setCursor(p.cursor);
+    }
+  }
+
+  Future<void> _ftp() async {
+    final c = await ftpConnectDialog(context);
+    // Panels showing a server that was just removed go home.
+    for (final p in panels) {
+      if (p.remote && !p.inZip && p.conn == null) await p.go(volumes.home);
+    }
+    if (c != null) await cur.go(c.root);
+    if (mounted) setState(() {});
+  }
+
   /// Selection, or the cursor row when nothing is selected (TC).
   bool _target() {
     if (cur.selected.isNotEmpty) return true;
@@ -788,10 +813,17 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     const sa = SingleActivator.new;
     return {
       // Moving around
-      sa(LogicalKeyboardKey.arrowDown): k(() => cur.moveCursor(1)),
-      sa(LogicalKeyboardKey.arrowUp): k(() => cur.moveCursor(-1)),
+      // In the thumbnail grid Up/Down jump a whole row.
+      sa(LogicalKeyboardKey.arrowDown): k(() => cur.moveCursor(store.grid ? cur.gridCols : 1)),
+      sa(LogicalKeyboardKey.arrowUp): k(() => cur.moveCursor(store.grid ? -cur.gridCols : -1)),
+      sa(LogicalKeyboardKey.arrowRight): k(() => store.grid ? cur.moveCursor(1) : null),
+      sa(LogicalKeyboardKey.arrowLeft): k(() => store.grid ? cur.moveCursor(-1) : null),
       sa(LogicalKeyboardKey.arrowDown, shift: true): k(() => cur.moveCursor(1, select: true)),
       sa(LogicalKeyboardKey.arrowUp, shift: true): k(() => cur.moveCursor(-1, select: true)),
+      // Views, as in TC: Ctrl+F1 brief (compact table), Ctrl+F2 full (detailed), Ctrl+Shift+F1 thumbnails.
+      sa(LogicalKeyboardKey.f1, control: true): k(() => _setView(table: true)),
+      sa(LogicalKeyboardKey.f2, control: true): k(() => _setView(table: false)),
+      sa(LogicalKeyboardKey.f1, control: true, shift: true): k(() => _setView(grid: true)),
       sa(LogicalKeyboardKey.pageDown): k(() => cur.moveCursor(12)),
       sa(LogicalKeyboardKey.pageUp): k(() => cur.moveCursor(-12)),
       sa(LogicalKeyboardKey.home): k(() => cur.moveCursor(-1 << 20)),
@@ -800,7 +832,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       sa(LogicalKeyboardKey.numpadEnter): k(openAt),
       sa(LogicalKeyboardKey.backspace): k(() => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null),
       sa(LogicalKeyboardKey.pageUp, control: true): k(() => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null),
-      sa(LogicalKeyboardKey.pageDown, control: true): k(() => at()?.isDir == true ? openAt() : null),
+      sa(LogicalKeyboardKey.pageDown, control: true): k(() => at()?.isDir == true || at()?.ext == 'zip' ? openAt() : null),
       sa(LogicalKeyboardKey.tab): k(() => activatePanel(1 - active)),
       sa(LogicalKeyboardKey.f1, alt: true): k(() {
         activatePanel(0);
@@ -857,7 +889,24 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       // Panels and tabs
       _Ctrl(PhysicalKeyboardKey.keyU): k(swap),
       _Ctrl(PhysicalKeyboardKey.keyR): k(() => panelAction(cur, PanelAction.refresh)),
-      _Ctrl(PhysicalKeyboardKey.keyF): k(() => panelAction(cur, PanelAction.filter)),
+      _Ctrl(PhysicalKeyboardKey.keyS): k(() => panelAction(cur, PanelAction.filter)),
+      // FTP, as in TC: Ctrl+F connect, Ctrl+Shift+F disconnect, Ctrl+N new server.
+      _Ctrl(PhysicalKeyboardKey.keyF): k(_ftp),
+      _Ctrl(PhysicalKeyboardKey.keyN): k(() async {
+        final c = await editFtp(context);
+        if (c != null) await cur.go(c.root);
+      }),
+      _Ctrl(PhysicalKeyboardKey.keyF, shift: true): k(() {
+        if (!cur.remote) return;
+        final z = cur.zipFile;
+        if (z != null) {
+          cur.go(parentOf(z), focus: nameOf(z));
+          return;
+        }
+        final c = cur.conn;
+        if (c != null) forgetVfs(c.id);
+        cur.go(volumes.home);
+      }),
       _Ctrl(PhysicalKeyboardKey.keyH): k(() => panelAction(cur, PanelAction.hidden)),
       _Ctrl(PhysicalKeyboardKey.keyT): k(() => panelAction(cur, PanelAction.newTab)),
       _Ctrl(PhysicalKeyboardKey.keyW): k(() => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null),
@@ -1115,16 +1164,17 @@ class _BarButton extends StatelessWidget {
 /// Ctrl+letter by key position: on Windows some Ctrl combinations (Ctrl+M is
 /// also Enter) don't arrive with the letter as their logical key.
 class _Ctrl extends ShortcutActivator {
-  const _Ctrl(this.key);
+  const _Ctrl(this.key, {this.shift = false});
   final PhysicalKeyboardKey key;
+  final bool shift;
 
   @override
   bool accepts(KeyEvent event, HardwareKeyboard state) =>
-      event is! KeyUpEvent && event.physicalKey == key && state.isControlPressed && !state.isAltPressed && !state.isShiftPressed;
+      event is! KeyUpEvent && event.physicalKey == key && state.isControlPressed && !state.isAltPressed && state.isShiftPressed == shift;
 
   @override
   Iterable<LogicalKeyboardKey>? get triggers => null;
 
   @override
-  String debugDescribeKeys() => 'Ctrl+${key.debugName}';
+  String debugDescribeKeys() => 'Ctrl+${shift ? 'Shift+' : ''}${key.debugName}';
 }
