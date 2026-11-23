@@ -222,17 +222,16 @@ class _PanelViewState extends State<PanelView> {
             ),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 200),
-                  style: TextStyle(
-                    fontSize: 18,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.62),
-                  ),
-                  child: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
+                Text(p.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 18,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                      color: active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.62),
+                    )),
                 const SizedBox(height: 1),
                 Text(info,
                     maxLines: 1,
