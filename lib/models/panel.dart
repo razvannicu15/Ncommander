@@ -50,6 +50,8 @@ final volumes = Volumes();
 
 /// "net://ftp" / "net://cloud": the saved connections listed in a panel.
 const netFtp = 'net://ftp', netCloud = 'net://cloud';
+
+/// "net://cloud/+gdrive": the add-a-connection rows.
 const netNew = '/+';
 
 bool isNetList(String path) => path == netFtp || path == netCloud;
@@ -58,11 +60,18 @@ String netTitle(String path) => path == netFtp ? 'FTP' : 'Cloud';
 
 List<Entry> netEntries(String path) {
   final ftp = path == netFtp;
+  final zero = DateTime.fromMillisecondsSinceEpoch(0);
+  Entry add(ConnType t, String label) => Entry(path: '$path$netNew${t.name}', name: '＋ $label', isDir: false, size: 0, modified: zero, mime: 'nc/add');
   return [
     for (final c in store.conns.where((c) => ftp ? c.type == ConnType.ftp : (c.type == ConnType.gdrive || c.type == ConnType.onedrive)))
-      Entry(path: c.root, name: c.name, isDir: true, size: 0, modified: DateTime.fromMillisecondsSinceEpoch(0), id: c.id),
-    // Last row: add a connection.
-    Entry(path: '$path$netNew', name: ftp ? tr('＋ Server FTP nou', '＋ New FTP server') : tr('＋ Conexiune cloud nouă', '＋ New cloud connection'), isDir: false, size: 0, modified: DateTime.fromMillisecondsSinceEpoch(0)),
+      Entry(path: c.root, name: c.name, isDir: true, size: 0, modified: zero, id: c.id, mime: 'nc/${c.type.name}'),
+    // Last rows: add a connection of that kind, straight away.
+    if (ftp)
+      add(ConnType.ftp, tr('Server FTP nou', 'New FTP server'))
+    else ...[
+      add(ConnType.gdrive, 'Google Drive'),
+      add(ConnType.onedrive, 'OneDrive'),
+    ],
   ];
 }
 

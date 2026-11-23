@@ -27,16 +27,16 @@ String connSubtitle(Conn c) => switch (c.type) {
     };
 
 /// Picks the type, then sets it up. Returns the new connection.
-Future<Conn?> addConnection(BuildContext context) async {
+/// [type] skips the picker (the "+ Google Drive" row in the Cloud list).
+Future<Conn?> addConnection(BuildContext context, {ConnType? type}) async {
   if (!await store.ensureUnlocked()) return null;
   if (!context.mounted) return null;
-  final t = await showModalBottomSheet<ConnType>(
+  final t = type ?? await showModalBottomSheet<ConnType>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         SheetTitle(tr('Conexiune nouă', 'New connection')),
-        // On Windows, Google Drive and OneDrive already show up as folders or drives.
-        for (final t in ConnType.values.where((t) => t != ConnType.zip && !(Platform.isWindows && t == ConnType.gdrive && googleDesktopId.isEmpty)))
+        for (final t in ConnType.values.where((t) => t != ConnType.zip))
           ListTile(
             leading: Icon(connIcon(t)),
             title: Text(connLabel(t)),

@@ -133,8 +133,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   // --------------------------------------------------------------- open
 
   Future<void> open(Entry e) async {
-    if (e.path.endsWith(netNew) && isNetList(e.path.substring(0, e.path.length - netNew.length))) {
-      return _netNew(e.path.substring(0, e.path.length - netNew.length));
+    final plus = e.path.indexOf(netNew);
+    if (e.path.startsWith('net://') && plus > 0 && isNetList(e.path.substring(0, plus))) {
+      return _netNew(ConnType.values.byName(e.path.substring(plus + netNew.length)));
     }
     if (e.isDir) {
       await cur.go(e.path);
@@ -835,8 +836,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   }
 
   /// Adds a server from the FTP / cloud list in a panel, then opens it.
-  Future<void> _netNew(String list) async {
-    final c = list == netFtp ? await editFtp(context) : await addConnection(context);
+  Future<void> _netNew(ConnType type) async {
+    final c = type == ConnType.ftp ? await editFtp(context) : await addConnection(context, type: type);
     await cur.load(quiet: true);
     if (c != null) await cur.go(c.root);
   }

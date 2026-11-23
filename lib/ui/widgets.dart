@@ -252,6 +252,17 @@ class EntryIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Rows of the FTP / Cloud lists: server, cloud, "add" icons.
+    final special = switch (e.mime) {
+      'nc/add' => Icons.add_circle_outline_rounded,
+      'nc/ftp' => Icons.dns_outlined,
+      'nc/gdrive' => Icons.add_to_drive_rounded,
+      'nc/onedrive' => Icons.cloud_outlined,
+      _ => null,
+    };
+    if (special != null) {
+      return SizedBox(width: size, height: size, child: Icon(special, size: size * 0.8, color: cs.primary));
+    }
     final k = e.kind;
     final c = k.color(cs);
     final r = BorderRadius.circular(size * 0.28);
