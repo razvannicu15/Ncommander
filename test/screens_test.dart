@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ncommander/core/i18n.dart';
 import 'package:ncommander/main.dart';
+import 'package:ncommander/ui/multi_rename_page.dart';
 import 'package:ncommander/models/panel.dart';
 import 'package:ncommander/services/fs.dart';
 import 'package:ncommander/services/native.dart';
@@ -271,5 +272,37 @@ void main() {
     await shot(t, '12_portrait_en');
     store.language = 'ro';
     setLanguage('ro');
+  }, skip: skip);
+
+  testWidgets('keyboard shortcuts', (t) async {
+    await setup(t, size: const Size(1360, 860), dpr: 1);
+    final s = await commander(t, Brightness.light, left: 'Download', select: ['concert.mp4', 'config.json']);
+    Future<void> combo(List<LogicalKeyboardKey> keys) async {
+      for (final k in keys) {
+        await t.sendKeyDownEvent(k);
+      }
+      for (final k in keys.reversed) {
+        await t.sendKeyUpEvent(k);
+      }
+      await t.pumpAndSettle();
+    }
+
+    await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.keyM]);
+    expect(find.byType(MultiRenamePage), findsOneWidget, reason: 'Ctrl+M opens multi-rename');
+    await combo([LogicalKeyboardKey.escape]);
+    expect(find.byType(MultiRenamePage), findsNothing, reason: 'Esc closes it');
+
+    await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.keyF]);
+    expect(find.byType(AlertDialog), findsOneWidget, reason: 'Ctrl+F opens the FTP dialog');
+    await combo([LogicalKeyboardKey.escape]);
+
+    await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.f1]);
+    expect(store.grid, isTrue, reason: 'Ctrl+Shift+F1 thumbnails');
+    await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.f1]);
+    expect(store.grid, isFalse);
+    expect(store.table, isTrue, reason: 'Ctrl+F1 compact');
+    await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.f2]);
+    expect(store.table, isFalse, reason: 'Ctrl+F2 detailed');
+    expect(s.panels[0].selected.length, 2);
   }, skip: skip);
 }
