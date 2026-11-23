@@ -115,6 +115,9 @@ class Panel extends ChangeNotifier {
 
   int total = 0, free = 0;
 
+  /// The connection's password is still locked behind the master password.
+  bool lockedOut = false;
+
   /// Keyboard cursor (name of the row), like Total Commander's.
   String? cursor;
   int cursorTick = 0;
@@ -201,7 +204,9 @@ class Panel extends ChangeNotifier {
 
   PanelSaved get saved => PanelSaved(tabs, _active, view: grid ? 'grid' : (table ? 'table' : 'list'));
 
-  Future<void> load({bool keepSelection = false, bool quiet = false}) async {
+  /// [prompt]: may ask for the master password (not when the app starts).
+  Future<void> load({bool keepSelection = false, bool quiet = false, bool prompt = true}) async {
+    lockedOut = false;
     final id = ++_loadId;
     final p = path;
     if (!quiet) {
@@ -217,9 +222,10 @@ class Panel extends ChangeNotifier {
       if (id != _loadId) return;
       _raw = [];
       error = tr('Conexiunea a fost ștearsă', 'The connection was deleted');
-    } else if (v != null && v.conn.needsUnlock && !await store.ensureUnlocked()) {
+    } else if (v != null && v.conn.needsUnlock && (!prompt || !await store.ensureUnlocked())) {
       if (id != _loadId) return;
       _raw = [];
+      lockedOut = true;
       error = tr('Parolele sunt blocate: introdu parola principală', 'Passwords are locked: enter the master password');
     } else if (v != null) {
       try {

@@ -69,7 +69,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     runner = JobRunner(() => context, _jobDone)..addListener(() => setState(() {}));
     if (widget.autoLoad) {
       for (final p in panels) {
-        p.load();
+        // A panel left on a server asks for the master password only when you unlock it.
+        p.load(prompt: false);
       }
     }
   }

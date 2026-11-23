@@ -724,9 +724,9 @@ class _PanelViewState extends State<PanelView> {
       body = ListView(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(), children: [
         if (parent) _parentRow(cs, h),
         SizedBox(
-          height: 160,
+          height: p.lockedOut ? 210 : 160,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(denied ? (p.remote ? Icons.cloud_off_rounded : Icons.lock_outline_rounded) : (p.filter.isNotEmpty ? Icons.filter_alt_off_outlined : Icons.folder_open_rounded),
+            Icon(p.lockedOut ? Icons.lock_outline_rounded : denied ? (p.remote ? Icons.cloud_off_rounded : Icons.lock_outline_rounded) : (p.filter.isNotEmpty ? Icons.filter_alt_off_outlined : Icons.folder_open_rounded),
                 size: 40, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
             const SizedBox(height: 8),
             Padding(
@@ -741,6 +741,17 @@ class _PanelViewState extends State<PanelView> {
               style: TextStyle(color: cs.onSurfaceVariant),
             ),
             ),
+            if (p.lockedOut) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.lock_open_rounded, size: 18),
+                label: Text(tr('Deblochează', 'Unlock')),
+                onPressed: () async {
+                  widget.onActivate();
+                  if (await store.ensureUnlocked()) p.load();
+                },
+              ),
+            ],
           ]),
         ),
       ]);

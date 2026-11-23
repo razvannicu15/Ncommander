@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
+import '../core/platform.dart';
 import '../core/themes.dart';
 import '../services/http.dart';
 import '../services/native.dart';
@@ -24,6 +25,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
   bool? _access;
+  int _section = 0;
   int? _latest; // build number of the published APK
 
   static const _repo = 'razvannicu15/Ncommander';
@@ -106,10 +108,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           for (var i = 0; i < items.length; i++) ...[if (i > 0) _div(cs), items[i]],
         ];
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('Setări', 'Settings'))),
-      body: MaxWidth(
-        child: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
+    final sections = <(IconData, String, List<Widget>)>[
+      (Icons.palette_outlined, tr('Aspect', 'Appearance'), [
           if (_access == false && !Platform.isWindows) ...[
             const SizedBox(height: 12),
             Group(
@@ -198,6 +198,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                 ),
             ]),
           ),
+      ]),
+      (Icons.view_column_outlined, tr('Panouri', 'Panels'), [
           SectionTitle(tr('Panouri', 'Panels')),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -258,6 +260,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             _switch(cs, Icons.pie_chart_outline_rounded, tr('Bară de ocupare', 'Usage bar'), store.showFreeSpace, (v) => store.showFreeSpace = v),
             if (Platform.isWindows) _switch(cs, Icons.storage_rounded, tr('Butoane de discuri', 'Drive buttons'), store.driveBar, (v) => store.driveBar = v),
           ])),
+      ]),
+      (Icons.shield_outlined, tr('Siguranță', 'Safety'), [
           SectionTitle(tr('Siguranță', 'Safety')),
           Group(padding: EdgeInsets.zero, children: [
             _switch(cs, Icons.delete_outline, tr('Confirmare la ștergere', 'Confirm before deleting'), store.confirmDelete, (v) => store.confirmDelete = v),
@@ -297,6 +301,8 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                 },
               ),
           ]),
+      ]),
+      (Icons.info_outline_rounded, tr('Despre', 'About'), [
           SectionTitle(tr('Despre', 'About')),
           Group(padding: EdgeInsets.zero, children: between([
             ListTile(
@@ -316,6 +322,55 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               onTap: Native.requestAccess,
             ),
           ])),
+      ]),
+    ];
+
+    // Desktop: categories on the left, one page at a time on the right.
+    final wide = desktop && MediaQuery.sizeOf(context).width >= 900;
+    if (wide) {
+      final cur = sections[_section.clamp(0, sections.length - 1)];
+      return Scaffold(
+        appBar: AppBar(title: Text(tr('Setări', 'Settings'))),
+        body: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 230,
+            color: cs.surfaceContainerLow,
+            child: ListView(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10), children: [
+              for (final (i, sec) in sections.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: ListTile(
+                    dense: true,
+                    selected: i == _section,
+                    selectedTileColor: cs.primary.withValues(alpha: 0.12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    leading: Icon(sec.$1, size: 20),
+                    title: Text(sec.$2, style: TextStyle(fontSize: 14, fontWeight: i == _section ? FontWeight.w700 : FontWeight.w500)),
+                    onTap: () => setState(() => _section = i),
+                  ),
+                ),
+            ]),
+          ),
+          VerticalDivider(width: 1, color: cs.outlineVariant.withValues(alpha: 0.6)),
+          Expanded(
+            child: ListView(padding: const EdgeInsets.fromLTRB(24, 8, 24, 32), children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  // The page's own heading is the category name on the left.
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cur.$3),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('Setări', 'Settings'))),
+      body: MaxWidth(
+        child: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
+          for (final sec in sections) ...sec.$3,
         ]),
       ),
     );
