@@ -14,31 +14,72 @@ String _what(List<Entry> items) => items.length == 1 ? '„${items.first.name}�
 /// Total Commander F5/F6: editable target, prefilled with the other panel.
 Future<String?> askTarget(BuildContext context, {required bool move, required List<Entry> items, required String target}) {
   final ctl = TextEditingController(text: target);
+  var editing = false;
   return showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      icon: Icon(move ? Icons.drive_file_move_outline : Icons.file_copy_outlined),
-      title: Text(move ? tr('Mută', 'Move') : tr('Copiază', 'Copy')),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(tr('${_what(items)} în:', '${_what(items)} to:'), maxLines: 2, overflow: TextOverflow.ellipsis),
-        const SizedBox(height: 10),
-        TextField(
-          controller: ctl,
-          maxLines: 3,
-          minLines: 1,
-          style: const TextStyle(fontSize: 14),
-          decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.folder_outlined, size: 20)),
+    builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+      final cs = Theme.of(ctx).colorScheme;
+      // The friendly destination; tap it to type a path instead (TC's F5 field).
+      final card = Material(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => set(() => editing = true),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+            child: Row(children: [
+              Icon(Icons.folder_rounded, color: cs.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(friendlyPath(target).replaceAll('/', ' › '),
+                    maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              ),
+              Icon(Icons.edit_outlined, size: 18, color: cs.onSurfaceVariant),
+            ]),
+          ),
         ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Anulează', 'Cancel'))),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
-          child: Text(move ? tr('Mută', 'Move') : tr('Copiază', 'Copy')),
-        ),
-      ],
-    ),
+      );
+      return AlertDialog(
+        icon: Icon(move ? Icons.drive_file_move_outline : Icons.file_copy_outlined),
+        title: Text(move ? tr('Mută', 'Move') : tr('Copiază', 'Copy')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('${_what(items)} în:', '${_what(items)} to:'), maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 10),
+          if (!editing)
+            card
+          else
+            TextField(
+              controller: ctl,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              style: const TextStyle(fontSize: 14),
+              decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.folder_outlined, size: 20)),
+            ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Anulează', 'Cancel'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, editing ? ctl.text.trim() : target),
+            child: Text(move ? tr('Mută', 'Move') : tr('Copiază', 'Copy')),
+          ),
+        ],
+      );
+    }),
   );
+}
+
+/// "Memorie internă/DCIM", "Drive personal/Docs": volume or connection name instead of the raw root.
+String friendlyPath(String path) {
+  if (isRemote(path)) {
+    final rel = relOf(path).replaceFirst(RegExp('^/'), '');
+    return [connOf(path)?.name ?? rootOf(path), if (rel.isNotEmpty) rel].join('/');
+  }
+  final v = volumes.of(path);
+  if (v == null) return path;
+  final rest = path.substring(v.path.length).replaceFirst(RegExp('^/'), '');
+  return [volumes.label(v), if (rest.isNotEmpty) rest].join('/');
 }
 
 /// Name field with the stem pre-selected (extension kept).

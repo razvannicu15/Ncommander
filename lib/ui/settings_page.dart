@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/i18n.dart';
 import '../core/themes.dart';
+import '../services/http.dart';
 import '../services/native.dart';
 import '../services/store.dart';
 import 'theme_preview.dart';
@@ -20,12 +21,25 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
   bool? _access;
+  int? _latest; // build number of the published APK
+
+  static const _repo = 'razvannicu15/Ncommander';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _check();
+    _checkUpdate();
+  }
+
+  Future<void> _checkUpdate() async {
+    try {
+      final r = await Http.send('GET', Uri.parse('https://api.github.com/repos/$_repo/releases/tags/latest'),
+          headers: {'Accept': 'application/vnd.github+json', 'User-Agent': 'Ncommander'}).timeout(const Duration(seconds: 10));
+      final m = RegExp(r'0\.1\.(\d+)').firstMatch('${r.json['body'] ?? ''}');
+      if (mounted && m != null) setState(() => _latest = int.parse(m.group(1)!));
+    } catch (_) {}
   }
 
   @override
@@ -63,6 +77,24 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
         value: value,
         onChanged: (v) => _set(() => onChanged(v)),
       );
+
+  Widget _updateTile(ColorScheme cs) {
+    final mine = int.tryParse(_build);
+    final newer = _latest != null && (mine == null || _latest! > mine);
+    return ListTile(
+      leading: Icon(newer ? Icons.system_update_rounded : Icons.update_rounded, color: newer ? cs.primary : null),
+      title: Text(tr('Actualizări', 'Updates')),
+      subtitle: newer ? Text(tr('Versiune nouă: 0.1.$_latest', 'New version: 0.1.$_latest')) : null,
+      trailing: _latest == null
+          ? Text('…', style: TextStyle(color: cs.onSurfaceVariant))
+          : newer
+              ? FilledButton.tonal(
+                  onPressed: () => Native.openUrl('https://github.com/$_repo/releases/download/latest/Ncommander-android.apk'),
+                  child: Text(tr('Descarcă', 'Download')),
+                )
+              : Text(tr('La zi', 'Up to date'), style: TextStyle(fontWeight: FontWeight.w600, color: cs.primary)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +243,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               trailing: Text('${(store.fontScale * 100).round()}%',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
             ),
-            _switch(cs, Icons.density_small_rounded, tr('Rânduri compacte', 'Compact rows'), store.compact, (v) => store.compact = v),
+            _switch(cs, Icons.density_small_rounded, tr('Spațiere redusă', 'Tight spacing'), store.compact, (v) => store.compact = v),
             _switch(cs, Icons.photo_outlined, tr('Miniaturi', 'Thumbnails'), store.thumbnails, (v) => store.thumbnails = v),
             _switch(cs, Icons.create_new_folder_outlined, tr('Folderele primele', 'Folders first'), store.foldersFirst, (v) => store.foldersFirst = v),
             _switch(cs, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), store.showHidden, (v) => store.showHidden = v),
@@ -229,6 +261,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               title: Text(appVersion),
               subtitle: Text(tr('Fără reclame · by norAz', 'No ads · by norAz')),
             ),
+            _updateTile(cs),
             ListTile(
               leading: Icon(_access == true ? Icons.verified_user_outlined : Icons.lock_outline_rounded),
               title: Text(tr('Acces la fișiere', 'File access')),
