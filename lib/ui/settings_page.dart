@@ -7,6 +7,7 @@ import '../core/themes.dart';
 import '../services/http.dart';
 import '../services/native.dart';
 import '../services/store.dart';
+import 'dialogs.dart';
 import 'theme_preview.dart';
 import 'widgets.dart';
 
@@ -260,6 +261,41 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           SectionTitle(tr('Siguranță', 'Safety')),
           Group(padding: EdgeInsets.zero, children: [
             _switch(cs, Icons.delete_outline, tr('Confirmare la ștergere', 'Confirm before deleting'), store.confirmDelete, (v) => store.confirmDelete = v),
+            // Passwords are always sealed by the system; this adds a password of your own.
+            SwitchListTile(
+              secondary: const Icon(Icons.lock_outline_rounded),
+              title: Text(tr('Parolă principală', 'Master password')),
+              subtitle: Text(
+                store.masterOn
+                    ? tr('Ți se cere o dată pe sesiune, la prima conexiune FTP sau cloud', 'Asked once per session, at the first FTP or cloud connection')
+                    : tr('Parolele sunt criptate de sistem pe acest dispozitiv', 'Passwords are encrypted by the system on this device'),
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+              ),
+              value: store.masterOn,
+              onChanged: (on) async {
+                if (on) {
+                  final pw = await askPassword(context,
+                      title: tr('Parolă principală nouă', 'New master password'),
+                      message: tr('Dacă o uiți, parolele salvate nu se mai pot recupera.', 'If you forget it, saved passwords can\'t be recovered.'),
+                      confirm: true);
+                  if (pw != null) await store.setMaster(pw);
+                } else {
+                  await store.removeMaster();
+                }
+                if (mounted) setState(() {});
+              },
+            ),
+            if (store.masterOn)
+              ListTile(
+                leading: const Icon(Icons.password_rounded),
+                title: Text(tr('Schimbă parola principală', 'Change master password')),
+                onTap: () async {
+                  if (!await store.ensureUnlocked() || !mounted) return;
+                  final pw = await askPassword(context, title: tr('Parolă principală nouă', 'New master password'), confirm: true);
+                  if (pw != null) await store.setMaster(pw);
+                  if (mounted) setState(() {});
+                },
+              ),
           ]),
           SectionTitle(tr('Despre', 'About')),
           Group(padding: EdgeInsets.zero, children: between([

@@ -461,3 +461,59 @@ Future<void> showErrors(BuildContext context, String title, List<String> errors)
         actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
       ),
     );
+
+/// Master password prompt. [confirm]: ask twice (setting a new one).
+Future<String?> askPassword(BuildContext context, {required String title, String? message, bool confirm = false, bool wrong = false}) {
+  final a = TextEditingController(), b = TextEditingController();
+  var hide = true;
+  String? err = wrong ? tr('Parolă greșită', 'Wrong password') : null;
+  return showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+      void done() {
+        if (a.text.length < 4) return set(() => err = tr('Minimum 4 caractere', 'At least 4 characters'));
+        if (confirm && a.text != b.text) return set(() => err = tr('Parolele nu coincid', 'Passwords don\'t match'));
+        Navigator.pop(ctx, a.text);
+      }
+
+      return AlertDialog(
+        icon: const Icon(Icons.lock_outline_rounded),
+        title: Text(title),
+        content: SizedBox(
+          width: 360,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (message != null) ...[Text(message, style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant)), const SizedBox(height: 14)],
+            TextField(
+              controller: a,
+              autofocus: true,
+              obscureText: hide,
+              onSubmitted: (_) => confirm ? null : done(),
+              decoration: InputDecoration(
+                labelText: tr('Parola principală', 'Master password'),
+                errorText: confirm ? null : err,
+                suffixIcon: IconButton(
+                  icon: Icon(hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => set(() => hide = !hide),
+                ),
+              ),
+            ),
+            if (confirm) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: b,
+                obscureText: hide,
+                onSubmitted: (_) => done(),
+                decoration: InputDecoration(labelText: tr('Repetă parola', 'Repeat password'), errorText: err),
+              ),
+            ],
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Anulează', 'Cancel'))),
+          FilledButton(onPressed: done, child: const Text('OK')),
+        ],
+      );
+    }),
+  );
+}

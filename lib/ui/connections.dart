@@ -28,13 +28,15 @@ String connSubtitle(Conn c) => switch (c.type) {
 
 /// Picks the type, then sets it up. Returns the new connection.
 Future<Conn?> addConnection(BuildContext context) async {
+  if (!await store.ensureUnlocked()) return null;
+  if (!context.mounted) return null;
   final t = await showModalBottomSheet<ConnType>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         SheetTitle(tr('Conexiune nouă', 'New connection')),
         // On Windows, Google Drive and OneDrive already show up as folders or drives.
-        for (final t in ConnType.values.where((t) => !Platform.isWindows || t == ConnType.ftp).where((t) => t != ConnType.zip))
+        for (final t in ConnType.values.where((t) => t != ConnType.zip && !(Platform.isWindows && t == ConnType.gdrive && googleDesktopId.isEmpty)))
           ListTile(
             leading: Icon(connIcon(t)),
             title: Text(connLabel(t)),
@@ -51,11 +53,11 @@ Future<Conn?> addConnection(BuildContext context) async {
     case ConnType.gdrive:
       return _signIn(context, () async {
         final have = store.conns.where((c) => c.type == ConnType.gdrive).map((c) => c.account.toLowerCase()).toSet();
-        final email = await connectGoogle(existing: have);
+        final (email, token) = await connectGoogle(existing: have);
         if (have.contains(email.toLowerCase())) throw RemoteException(tr('Contul $email e deja adăugat', '$email is already added'));
         // Two Drive accounts: tell them apart by name.
         final name = have.isEmpty ? 'Google Drive' : 'Drive · ${email.split('@').first}';
-        return Conn(id: _newId(), type: ConnType.gdrive, name: name, account: email);
+        return Conn(id: _newId(), type: ConnType.gdrive, name: name, account: email, token: token);
       });
     case ConnType.onedrive:
       var id = store.onedriveClientId;
@@ -142,6 +144,9 @@ Future<String?> _askClientId(BuildContext context) {
 
 /// FTP server form with a "Test" button. Edits [existing] in place.
 Future<Conn?> editFtp(BuildContext context, [Conn? existing]) async {
+  // Passwords can only be shown / saved once the master password is entered.
+  if (!await store.ensureUnlocked()) return null;
+  if (!context.mounted) return null;
   final name = TextEditingController(text: existing?.name ?? '');
   final host = TextEditingController(text: existing?.host ?? '');
   final port = TextEditingController(text: '${existing?.port ?? 21}');

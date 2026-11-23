@@ -54,6 +54,12 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    store.askMaster = ({bool wrong = false}) => askPassword(
+          context,
+          title: tr('Parola principală', 'Master password'),
+          message: tr('Parolele FTP și conturile cloud sunt protejate.', 'FTP passwords and cloud accounts are protected.'),
+          wrong: wrong,
+        );
     if (Platform.isWindows) _drives = Timer.periodic(const Duration(seconds: 4), (_) => volumes.refresh());
     final home = volumes.home;
     panels = [Panel(0, _valid(store.left), home), Panel(1, _valid(store.right), home)];

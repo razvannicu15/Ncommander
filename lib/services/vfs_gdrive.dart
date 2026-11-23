@@ -1,10 +1,15 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 
 import '../core/i18n.dart';
 import '../models/entry.dart';
 import 'fs.dart';
 import 'http.dart';
 import 'native.dart';
+import 'oauth_desktop.dart';
 import 'vfs.dart';
 
 const _folder = 'application/vnd.google-apps.folder';
@@ -32,6 +37,7 @@ class GDriveVfs extends Vfs {
   static String unseg(String s) => s.replaceAll('∕', '/');
 
   Future<String> _getToken({bool fresh = false}) async {
+    if (Platform.isWindows) return _desktopToken(fresh);
     if (fresh && _token != null) {
       await Native.googleClearToken(_token!);
       _token = null;
@@ -39,6 +45,27 @@ class GDriveVfs extends Vfs {
     _token ??= await Native.googleToken(conn.account, interactive: false) ??
         await Native.googleToken(conn.account, interactive: true);
     if (_token == null) throw RemoteException(tr('Autentificare Google anulată', 'Google sign-in cancelled'));
+    return _token!;
+  }
+
+  DateTime _expires = DateTime(0);
+
+  /// Windows: access token from the refresh token saved at sign-in.
+  Future<String> _desktopToken(bool fresh) async {
+    if (!fresh && _token != null && DateTime.now().isBefore(_expires)) return _token!;
+    final r = await Http.send('POST', Uri.parse('https://oauth2.googleapis.com/token'), form: {
+      'client_id': googleDesktopId,
+      'client_secret': googleDesktopSecret,
+      'grant_type': 'refresh_token',
+      'refresh_token': conn.token,
+    });
+    if (!r.ok) {
+      throw RemoteException(r.status == 400
+          ? tr('Sesiunea Google a expirat: adaugă din nou contul', 'Google session expired: add the account again')
+          : r.error);
+    }
+    _token = r.json['access_token'] as String;
+    _expires = DateTime.now().add(Duration(seconds: ((r.json['expires_in'] as num?)?.toInt() ?? 3600) - 120));
     return _token!;
   }
 
@@ -218,8 +245,15 @@ class GDriveVfs extends Vfs {
   }
 }
 
-/// Signs in with a Google account picked on the phone; returns its e-mail.
-Future<String> connectGoogle({Set<String> existing = const {}}) async {
+/// Google OAuth client of type "Desktop app" (Windows build). Google treats
+/// the secret of installed apps as public; it can't be kept secret anyway.
+const googleDesktopId = '';
+const googleDesktopSecret = '';
+
+/// Signs in to Google Drive; returns (e-mail, refresh token). On the phone the
+/// account comes from Android (no token kept); on Windows from the browser.
+Future<(String, String)> connectGoogle({Set<String> existing = const {}}) async {
+  if (Platform.isWindows) return _connectDesktop(existing);
   final picked = await Native.googlePickAccount();
   if (picked == null) throw RemoteException(tr('Autentificare Google anulată', 'Google sign-in cancelled'));
   if (existing.contains(picked.toLowerCase())) {
@@ -230,5 +264,49 @@ Future<String> connectGoogle({Set<String> existing = const {}}) async {
   final r = await Http.send('GET', Uri.parse('$_api/about?fields=user(emailAddress,displayName)'), headers: {'Authorization': 'Bearer $token'});
   if (!r.ok) throw RemoteException(r.error);
   final u = r.json['user'] as Map?;
-  return (u?['emailAddress'] as String?) ?? (u?['displayName'] as String?) ?? 'Google';
+  return ((u?['emailAddress'] as String?) ?? (u?['displayName'] as String?) ?? 'Google', '');
+}
+
+String _rand(int n) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  final r = Random.secure();
+  return List.generate(n, (_) => chars[r.nextInt(chars.length)]).join();
+}
+
+Future<(String, String)> _connectDesktop(Set<String> existing) async {
+  if (googleDesktopId.isEmpty) {
+    throw RemoteException(tr('Google Drive pe Windows nu e configurat încă', 'Google Drive on Windows isn\'t set up yet'));
+  }
+  final verifier = _rand(64);
+  final challenge = base64Url.encode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', '');
+  final state = _rand(24);
+  final q = await loopbackSignIn((redirect) => Uri.parse('https://accounts.google.com/o/oauth2/v2/auth').replace(queryParameters: {
+        'client_id': googleDesktopId,
+        'redirect_uri': redirect,
+        'response_type': 'code',
+        'scope': 'https://www.googleapis.com/auth/drive email',
+        'code_challenge': challenge,
+        'code_challenge_method': 'S256',
+        'state': state,
+        'access_type': 'offline',
+        'prompt': 'select_account consent',
+      }));
+  if (q['error'] != null) throw RemoteException(q['error']!);
+  if (q['state'] != state || q['code'] == null) throw RemoteException(tr('Autentificare Google anulată', 'Google sign-in cancelled'));
+  final r = await Http.send('POST', Uri.parse('https://oauth2.googleapis.com/token'), form: {
+    'client_id': googleDesktopId,
+    'client_secret': googleDesktopSecret,
+    'code': q['code']!,
+    'code_verifier': verifier,
+    'grant_type': 'authorization_code',
+    'redirect_uri': q['redirect']!,
+  });
+  if (!r.ok) throw RemoteException(r.error);
+  final access = r.json['access_token'] as String;
+  final refresh = r.json['refresh_token'] as String? ?? '';
+  final me = await Http.send('GET', Uri.parse('$_api/about?fields=user(emailAddress,displayName)'), headers: {'Authorization': 'Bearer $access'});
+  final u = me.json['user'] as Map?;
+  final email = (u?['emailAddress'] as String?) ?? (u?['displayName'] as String?) ?? 'Google';
+  if (existing.contains(email.toLowerCase())) throw RemoteException(tr('Contul $email e deja adăugat', '$email is already added'));
+  return (email, refresh);
 }

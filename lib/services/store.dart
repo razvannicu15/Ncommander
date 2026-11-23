@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/i18n.dart';
 import '../core/themes.dart';
 import '../models/entry.dart';
+import 'secrets.dart';
 
 enum PanelLayout { auto, sideBySide, stacked }
 
@@ -52,6 +55,14 @@ class Conn {
   /// FTPS server that only accepts clear data connections (login stays encrypted).
   bool clearData;
 
+  /// What goes to disk instead of [password] / [token] (see secrets.dart).
+  String sealedPassword = '', sealedToken = '';
+  String? _fromPwd, _fromTok; // the clear text the sealed values were made from
+
+  /// Still encrypted with the master password (not unlocked this session).
+  Uint8List? lockedPwd, lockedTok;
+  bool get needsUnlock => lockedPwd != null || lockedTok != null;
+
   String get root => '${type.name}://$id';
 
   Map<String, dynamic> toJson() => {
@@ -61,11 +72,11 @@ class Conn {
         'host': host,
         'port': port,
         'user': user,
-        'password': password,
+        'pwd': sealedPassword,
         'tls': tls,
         'folder': folder,
         'account': account,
-        'token': token,
+        'tok': sealedToken,
         'clearData': clearData,
       };
 
@@ -83,9 +94,11 @@ class Conn {
       tls: j['tls'] == true,
       folder: (j['folder'] as String?) ?? '/',
       account: (j['account'] as String?) ?? '',
-      token: (j['token'] as String?) ?? '',
+      token: (j['token'] as String?) ?? '', // clear text from older versions
       clearData: j['clearData'] == true,
-    );
+    )
+      ..sealedPassword = (j['pwd'] as String?) ?? ''
+      ..sealedToken = (j['tok'] as String?) ?? '';
   }
 }
 
@@ -174,6 +187,9 @@ class Store extends ChangeNotifier {
       _file = File('${dir.path}/ncommander.json');
       if (await _file!.exists()) {
         fromJson(jsonDecode(await _file!.readAsString()) as Map<String, dynamic>);
+        final legacy = await _openAll();
+        // Passwords left in clear text by an older version get sealed now.
+        if (legacy) await save(notify: false);
       }
     } catch (_) {
       try {
@@ -225,6 +241,9 @@ class Store extends ChangeNotifier {
     final od = j['onedriveClientId'];
     // The built-in ID wins over anything pasted earlier.
     if (_oneDriveApp.isEmpty && od is String && od.isNotEmpty) onedriveClientId = od;
+    final m = j['master'];
+    masterSalt = m is Map ? m['salt'] as String? : null;
+    masterCheck = m is Map ? m['check'] as String? : null;
     left = PanelSaved.fromJson(j['left']);
     right = PanelSaved.fromJson(j['right']);
     activePanel = ((j['activePanel'] as int?) ?? 0).clamp(0, 1);
@@ -254,6 +273,7 @@ class Store extends ChangeNotifier {
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
         'conns': conns.map((c) => c.toJson()).toList(),
         'onedriveClientId': onedriveClientId,
+        if (masterOn) 'master': {'salt': masterSalt, 'check': masterCheck},
         if (left != null) 'left': left!.toJson(),
         if (right != null) 'right': right!.toJson(),
         'activePanel': activePanel,
@@ -275,6 +295,7 @@ class Store extends ChangeNotifier {
     try {
       do {
         _again = false;
+        await _sealAll();
         final tmp = File('${f.path}.tmp');
         await tmp.writeAsString(jsonEncode(toJson()));
         await tmp.rename(f.path);
@@ -283,6 +304,117 @@ class Store extends ChangeNotifier {
     } finally {
       _saving = false;
     }
+  }
+
+  // ---------------------------------------------------------------- secrets
+
+  String? masterSalt, masterCheck;
+  SecretKey? _master;
+  bool get masterOn => masterSalt != null && masterCheck != null;
+  bool get unlocked => !masterOn || _master != null;
+
+  /// Asks the user for the master password (set by the UI); null = cancelled.
+  Future<String?> Function({bool wrong})? askMaster;
+
+  /// Opens the sealed secrets; true if clear-text ones from an old file were found.
+  Future<bool> _openAll() async {
+    var legacy = false;
+    for (final c in conns) {
+      if (c.sealedPassword.isNotEmpty) {
+        final o = await openSecret(c.sealedPassword);
+        c.password = o.plain ?? '';
+        c._fromPwd = o.plain;
+        c.lockedPwd = o.locked;
+      } else if (c.password.isNotEmpty) {
+        legacy = true;
+      }
+      if (c.sealedToken.isNotEmpty) {
+        final o = await openSecret(c.sealedToken);
+        c.token = o.plain ?? '';
+        c._fromTok = o.plain;
+        c.lockedTok = o.locked;
+      } else if (c.token.isNotEmpty) {
+        legacy = true;
+      }
+    }
+    return legacy;
+  }
+
+  Future<void> _sealAll() async {
+    // With a master password set but not entered, new values can't be sealed yet.
+    if (masterOn && _master == null) return;
+    final key = masterOn ? _master : null;
+    for (final c in conns) {
+      try {
+        if (c.lockedPwd == null && c.password != c._fromPwd) {
+          c.sealedPassword = await sealSecret(c.password, master: key);
+          c._fromPwd = c.password;
+        }
+        if (c.lockedTok == null && c.token != c._fromTok) {
+          c.sealedToken = await sealSecret(c.token, master: key);
+          c._fromTok = c.token;
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// Asks for the master password once per session; false if cancelled.
+  Future<bool> ensureUnlocked() async {
+    if (unlocked) return true;
+    final ask = askMaster;
+    if (ask == null) return false;
+    var wrong = false;
+    while (true) {
+      final pw = await ask(wrong: wrong);
+      if (pw == null) return false;
+      final key = await deriveKey(pw, base64.decode(masterSalt!));
+      if (await verifyCheck(key, masterCheck!)) {
+        _master = key;
+        for (final c in conns) {
+          if (c.lockedPwd != null) {
+            c.password = await openLocked(key, c.lockedPwd!) ?? '';
+            c._fromPwd = c.password;
+            c.lockedPwd = null;
+          }
+          if (c.lockedTok != null) {
+            c.token = await openLocked(key, c.lockedTok!) ?? '';
+            c._fromTok = c.token;
+            c.lockedTok = null;
+          }
+        }
+        return true;
+      }
+      wrong = true;
+    }
+  }
+
+  /// Turns the master password on (or changes it): everything is re-sealed with it.
+  Future<bool> setMaster(String pw) async {
+    if (!await ensureUnlocked()) return false;
+    final salt = randomBytes(16);
+    final key = await deriveKey(pw, salt);
+    masterSalt = base64.encode(salt);
+    masterCheck = await makeCheck(key);
+    _master = key;
+    for (final c in conns) {
+      c._fromPwd = null;
+      c._fromTok = null;
+    }
+    await save();
+    return true;
+  }
+
+  Future<bool> removeMaster() async {
+    if (!await ensureUnlocked()) return false;
+    masterSalt = null;
+    masterCheck = null;
+    _master = null;
+    for (final c in conns) {
+      c._fromPwd = null;
+      c._fromTok = null;
+    }
+    await save();
+    return true;
   }
 
   bool isBookmarked(String path) => bookmarks.any((b) => b.path == path);

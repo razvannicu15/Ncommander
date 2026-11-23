@@ -10,6 +10,7 @@ import '../models/entry.dart';
 import 'fs.dart';
 import 'http.dart';
 import 'native.dart';
+import 'oauth_desktop.dart';
 import 'store.dart';
 import 'vfs.dart';
 
@@ -214,10 +215,10 @@ Future<(String, String)> connectOneDrive(String clientId) async {
   final verifier = _rand(64);
   final challenge = base64Url.encode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', '');
   final state = _rand(24);
-  final url = Uri.parse('$_login/authorize').replace(queryParameters: {
+  Uri url(String redirect) => Uri.parse('$_login/authorize').replace(queryParameters: {
     'client_id': clientId,
     'response_type': 'code',
-    'redirect_uri': redirectUri,
+    'redirect_uri': redirect,
     'response_mode': 'query',
     'scope': _scope,
     'code_challenge': challenge,
@@ -225,17 +226,27 @@ Future<(String, String)> connectOneDrive(String clientId) async {
     'state': state,
     'prompt': 'select_account',
   });
-  final back = Native.redirects.first.timeout(const Duration(minutes: 5));
-  await Native.openUrl(url.toString());
-  final uri = Uri.parse(await back);
-  final q = uri.queryParameters;
+  // Android: the app's own scheme; Windows: a loopback page on this PC
+  // (Azure app needs "Mobile and desktop" with redirect http://localhost).
+  final Map<String, String> q;
+  final String redirect;
+  if (Platform.isWindows) {
+    final r = await loopbackSignIn(url, host: 'localhost');
+    redirect = r['redirect']!;
+    q = r;
+  } else {
+    final back = Native.redirects.first.timeout(const Duration(minutes: 5));
+    await Native.openUrl(url(redirectUri).toString());
+    q = Uri.parse(await back).queryParameters;
+    redirect = redirectUri;
+  }
   if (q['error'] != null) throw RemoteException(q['error_description'] ?? q['error']!);
   if (q['state'] != state || q['code'] == null) throw RemoteException(tr('Autentificare anulată', 'Sign-in cancelled'));
   final r = await Http.send('POST', Uri.parse('$_login/token'), form: {
     'client_id': clientId,
     'grant_type': 'authorization_code',
     'code': q['code']!,
-    'redirect_uri': redirectUri,
+    'redirect_uri': redirect,
     'code_verifier': verifier,
     'scope': _scope,
   });

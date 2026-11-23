@@ -208,6 +208,10 @@ class Panel extends ChangeNotifier {
       if (id != _loadId) return;
       _raw = [];
       error = tr('Conexiunea a fost ștearsă', 'The connection was deleted');
+    } else if (v != null && v.conn.needsUnlock && !await store.ensureUnlocked()) {
+      if (id != _loadId) return;
+      _raw = [];
+      error = tr('Parolele sunt blocate: introdu parola principală', 'Passwords are locked: enter the master password');
     } else if (v != null) {
       try {
         final list = await v.list(p);

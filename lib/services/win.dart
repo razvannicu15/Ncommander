@@ -2,6 +2,7 @@
 // the system accent colour. Only called when Platform.isWindows.
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -156,4 +157,45 @@ Future<String?> officeToPdf(String path) async {
     }
   } catch (_) {}
   return null;
+}
+
+// ------------------------------------------------------------------ DPAPI
+
+final class _Blob extends Struct {
+  @Uint32()
+  external int cbData;
+  external Pointer<Uint8> pbData;
+}
+
+final _crypt32 = DynamicLibrary.open('crypt32.dll');
+typedef _DpapiN = Int32 Function(Pointer<_Blob>, Pointer<Utf16>, Pointer<_Blob>, Pointer<Void>, Pointer<Void>, Uint32, Pointer<_Blob>);
+typedef _DpapiD = int Function(Pointer<_Blob>, Pointer<Utf16>, Pointer<_Blob>, Pointer<Void>, Pointer<Void>, int, Pointer<_Blob>);
+typedef _UnprotN = Int32 Function(Pointer<_Blob>, Pointer<Pointer<Utf16>>, Pointer<_Blob>, Pointer<Void>, Pointer<Void>, Uint32, Pointer<_Blob>);
+typedef _UnprotD = int Function(Pointer<_Blob>, Pointer<Pointer<Utf16>>, Pointer<_Blob>, Pointer<Void>, Pointer<Void>, int, Pointer<_Blob>);
+final _protect = _crypt32.lookupFunction<_DpapiN, _DpapiD>('CryptProtectData');
+final _unprotect = _crypt32.lookupFunction<_UnprotN, _UnprotD>('CryptUnprotectData');
+final _localFree = _k32.lookupFunction<Pointer<Void> Function(Pointer<Void>), Pointer<Void> Function(Pointer<Void>)>('LocalFree');
+
+/// Windows DPAPI: data only this Windows user, on this PC, can decrypt.
+Uint8List? dpapi(Uint8List data, {required bool protect}) {
+  final input = calloc<_Blob>(), output = calloc<_Blob>();
+  final buf = calloc<Uint8>(data.isEmpty ? 1 : data.length);
+  try {
+    buf.asTypedList(data.length).setAll(0, data);
+    input.ref
+      ..cbData = data.length
+      ..pbData = buf;
+    const uiForbidden = 0x1;
+    final ok = protect
+        ? _protect(input, nullptr, nullptr, nullptr, nullptr, uiForbidden, output)
+        : _unprotect(input, nullptr, nullptr, nullptr, nullptr, uiForbidden, output);
+    if (ok == 0) return null;
+    final out = Uint8List.fromList(output.ref.pbData.asTypedList(output.ref.cbData));
+    _localFree(output.ref.pbData.cast());
+    return out;
+  } finally {
+    calloc.free(buf);
+    calloc.free(input);
+    calloc.free(output);
+  }
 }

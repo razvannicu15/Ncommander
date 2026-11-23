@@ -28,8 +28,15 @@ import android.os.StatFs
 import android.os.storage.StorageManager
 import android.provider.MediaStore
 import android.provider.Settings
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Size
 import androidx.core.content.FileProvider
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
@@ -59,6 +66,8 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "hasAccess" -> result.success(hasAccess())
+                    "protect" -> result.success(seal(call.arguments as ByteArray))
+                    "unprotect" -> result.success(unseal(call.arguments as ByteArray))
                     "systemAccent" -> result.success(
                         if (Build.VERSION.SDK_INT >= 31) resources.getColor(android.R.color.system_accent1_500, theme) else null
                     )
@@ -377,5 +386,35 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         pool.shutdownNow()
         super.onDestroy()
+    }
+
+    // Saved passwords and tokens are encrypted with a key kept in the Android Keystore.
+    private fun secretKey(): SecretKey {
+        val alias = "ncommander_secrets"
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        val g = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        g.init(
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return g.generateKey()
+    }
+
+    private fun seal(data: ByteArray): ByteArray {
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, secretKey())
+        return c.iv + c.doFinal(data)
+    }
+
+    private fun unseal(data: ByteArray): ByteArray? = try {
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, data.copyOfRange(0, 12)))
+        c.doFinal(data.copyOfRange(12, data.size))
+    } catch (e: Exception) {
+        null
     }
 }

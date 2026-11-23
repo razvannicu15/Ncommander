@@ -429,23 +429,30 @@ class _PanelViewState extends State<PanelView> {
               color: cs.surfaceContainerLow,
               border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.6)),
             ),
-            child: Row(children: [
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Expanded(
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   children: [
                     for (final v in list) _driveButton(cs, v, v.path.substring(0, 2) == cur, labels),
                   ],
                 ),
               ),
+              // Same height and spacing as the drive buttons, whatever is on the right.
               _netButton(cs, netFtp, Icons.dns_outlined, 'FTP', p.path == netFtp || p.conn?.type == ConnType.ftp),
+              const SizedBox(width: 5),
+              _netButton(cs, netCloud, Icons.cloud_outlined, 'Cloud', p.path == netCloud || p.conn?.type == ConnType.gdrive || p.conn?.type == ConnType.onedrive),
               if (cur != null && p.total > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 6, right: 12),
-                  child: Text(tr('${fmtSize(p.free)} liber din ${fmtSize(p.total)}', '${fmtSize(p.free)} free of ${fmtSize(p.total)}'),
-                      style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Text(tr('${fmtSize(p.free)} liber din ${fmtSize(p.total)}', '${fmtSize(p.free)} free of ${fmtSize(p.total)}'),
+                        style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
+                  ),
                 ),
+              const SizedBox(width: 10),
             ]),
           );
         },
@@ -454,34 +461,28 @@ class _PanelViewState extends State<PanelView> {
   /// FTP button at the right of the drive bar: the server list in this panel.
   Widget _netButton(ColorScheme cs, String list, IconData icon, String label, bool on) {
     final fg = on ? cs.onPrimary : cs.onSurface;
-    return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: Tooltip(
-        message: tr('Serverele $label salvate', 'Saved $label servers'),
-        waitDuration: const Duration(milliseconds: 400),
-        child: Material(
-          color: on ? cs.primary : cs.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: on ? BorderSide.none : BorderSide(color: cs.outlineVariant, width: 0.8),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              widget.onActivate();
-              p.go(list);
-            },
-            child: SizedBox(
-              height: 30,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(icon, size: 15, color: fg),
-                  const SizedBox(width: 6),
-                  Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg)),
-                ]),
-              ),
-            ),
+    return Tooltip(
+      message: tr('Conexiunile $label salvate', 'Saved $label connections'),
+      waitDuration: const Duration(milliseconds: 400),
+      child: Material(
+        color: on ? cs.primary : cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: on ? BorderSide.none : BorderSide(color: cs.outlineVariant, width: 0.8),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            widget.onActivate();
+            p.go(list);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg)),
+            ]),
           ),
         ),
       ),
