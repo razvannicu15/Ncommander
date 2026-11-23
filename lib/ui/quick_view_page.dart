@@ -130,7 +130,7 @@ class _Office extends StatefulWidget {
 
 class _OfficeState extends State<_Office> {
   OfficeContent? _c;
-  WordDoc? _doc;
+  WordDoc? _word;
   Deck? _deck;
   String? _err;
   int _sheet = 0;
@@ -144,7 +144,7 @@ class _OfficeState extends State<_Office> {
     }
 
     if (e.startsWith('doc')) {
-      readDocx(widget.path).then((d) => mounted ? setState(() => _doc = d) : null, onError: fail);
+      readDocx(widget.path).then((d) => mounted ? setState(() => _word = d) : null, onError: fail);
     } else if (e.startsWith('ppt')) {
       readPptx(widget.path).then((d) => mounted ? setState(() => _deck = d) : null, onError: fail);
     } else {
@@ -158,7 +158,7 @@ class _OfficeState extends State<_Office> {
     if (_err != null) {
       return Center(child: Text(tr('Nu am putut citi documentul', 'Couldn\'t read the document'), style: TextStyle(color: cs.onSurfaceVariant)));
     }
-    if (_doc != null) return WordView(doc: _doc!);
+    if (_word != null) return WordView(doc: _word!);
     if (_deck != null) return DeckView(deck: _deck!);
     final c = _c;
     if (c == null) return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
