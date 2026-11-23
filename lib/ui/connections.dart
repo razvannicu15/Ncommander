@@ -70,6 +70,8 @@ Future<Conn?> addConnection(BuildContext context) async {
         final (name, token) = await connectOneDrive(id);
         return Conn(id: _newId(), type: ConnType.onedrive, name: 'OneDrive', account: name, token: token);
       });
+    case ConnType.zip:
+      return null; // archives are opened from the panel, not added
   }
 }
 
