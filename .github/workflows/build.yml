@@ -169,6 +169,19 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Write-Host "Ncommander.exe ran for 12 s"
 
+      - name: Screenshots on Windows
+        continue-on-error: true
+        shell: pwsh
+        run: ./tool/win_shot.ps1 -Exe "build\windows\x64\runner\Release\Ncommander.exe" -Out winshots
+
+      - name: Publish Windows screenshots
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          gh release view screens -R "$REPO" >/dev/null 2>&1 || \
+            gh release create screens -R "$REPO" --prerelease --title "Capturi ecran" --notes "Generate automat de CI." || true
+          gh release upload screens winshots/*.png -R "$REPO" --clobber
+
       - name: Publish
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
         run: |
