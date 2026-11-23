@@ -87,6 +87,7 @@ class PanelView extends StatefulWidget {
     required this.onOpen,
     required this.onDrawer,
     required this.onAction,
+    this.onContext,
   });
 
   final Panel panel;
@@ -95,6 +96,9 @@ class PanelView extends StatefulWidget {
   final void Function(Entry) onOpen;
   final VoidCallback onDrawer;
   final void Function(PanelAction) onAction;
+
+  /// Right click on the desktop: context menu at this screen position.
+  final void Function(Offset)? onContext;
 
   @override
   State<PanelView> createState() => _PanelViewState();
@@ -259,14 +263,22 @@ class _PanelViewState extends State<PanelView> {
     if (open) widget.onOpen(e);
   }
 
+  /// Right click: the row joins (or becomes) the selection, then the menu.
+  void _menu2(Entry e, Offset at) {
+    widget.onActivate();
+    if (!p.selected.contains(e.path)) {
+      p.clearSelection();
+      p.toggle(e);
+    }
+    p.setCursor(e.name);
+    widget.onContext?.call(at);
+  }
+
   void _press(Entry e, bool selecting, bool sel) {
     widget.onActivate();
     HapticFeedback.selectionClick();
-    if (selecting && !sel) {
-      p.selectRange(e);
-    } else {
-      p.toggle(e);
-    }
+    // Long press toggles just this row (ranges: Shift+click / Shift+arrows).
+    p.toggle(e);
   }
 
   bool get _showParent => store.showParent && !p.atRoot && !p.atVolumeRoot && p.filter.isEmpty;
@@ -350,17 +362,38 @@ class _PanelViewState extends State<PanelView> {
     );
   }
 
+  /// Selection count; tapping it clears the selection.
   Widget _selPill(ColorScheme cs) {
     final n = p.selected.length;
     final text = p.selectedBytes > 0 ? '$n · ${fmtSize(p.selectedBytes)}' : '$n';
-    return Container(
-      margin: const EdgeInsets.only(left: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(20)),
-      child: Text(text,
-          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onPrimary, fontFeatures: const [FontFeature.tabularFigures()])),
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Tooltip(
+        message: tr('Deselectează tot', 'Clear selection'),
+        child: Material(
+          color: cs.primary,
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () {
+              widget.onActivate();
+              p.clearSelection();
+            },
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(text,
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onPrimary, fontFeatures: const [FontFeature.tabularFigures()])),
+                const SizedBox(width: 4),
+                Icon(Icons.close_rounded, size: 15, color: cs.onPrimary),
+              ]),
+            ),
+          ),
+        ),
+      ),
     );
   }
+
 
   /// Hairline under the header; the filled part shows how full the storage is.
   Widget _usageEdge(ColorScheme cs, double? usage, bool active) {
@@ -732,7 +765,8 @@ class _PanelViewState extends State<PanelView> {
         borderRadius: BorderRadius.circular(12),
         onTap: () => _click(e, p.hasSelection),
         onLongPress: () => _press(e, p.hasSelection, sel),
-        onSecondaryTap: () => _press(e, p.hasSelection, sel),
+        onSecondaryTapDown: desktop ? (d) => _menu2(e, d.globalPosition) : null,
+        onSecondaryTap: desktop ? null : () => _press(e, p.hasSelection, sel),
         child: AnimatedContainer(
           key: cur ? _gridKey : null,
           duration: const Duration(milliseconds: 160),
@@ -821,7 +855,13 @@ class _PanelViewState extends State<PanelView> {
     return null;
   }
 
-  Widget _parentTile(ColorScheme cs) => InkWell(
+  Widget _parentTile(ColorScheme cs) => Container(
+      key: p.cursorOnParent && _showCursor ? _gridKey : null,
+      margin: const EdgeInsets.all(3),
+      decoration: p.cursorOnParent && _showCursor
+          ? BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: cs.primary, width: 1.5))
+          : null,
+      child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
           widget.onActivate();
@@ -835,7 +875,8 @@ class _PanelViewState extends State<PanelView> {
             child: Text('..', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
           ),
         ]),
-      );
+      ),
+    );
 
   // ----------------------------------------------------------------- table
 
@@ -907,7 +948,8 @@ class _PanelViewState extends State<PanelView> {
         onTap: () => _click(e, selecting),
         // Long press on touch, right click with a mouse.
         onLongPress: () => _press(e, selecting, sel),
-        onSecondaryTap: () => _press(e, selecting, sel),
+        onSecondaryTapDown: desktop ? (d) => _menu2(e, d.globalPosition) : null,
+        onSecondaryTap: desktop ? null : () => _press(e, selecting, sel),
         child: AnimatedContainer(
           key: e.name == p.cursor && _showCursor ? _cursorKey : null,
           duration: Duration(milliseconds: flash ? 120 : 380),
@@ -981,6 +1023,16 @@ class _PanelViewState extends State<PanelView> {
   }
 
   Widget _parentRow(ColorScheme cs, double h) {
+    final row = _parentRowBody(cs, h);
+    if (!(p.cursorOnParent && _showCursor)) return row;
+    return Container(
+      key: _cursorKey,
+      foregroundDecoration: BoxDecoration(border: Border.all(color: cs.primary, width: 1.5)),
+      child: row,
+    );
+  }
+
+  Widget _parentRowBody(ColorScheme cs, double h) {
     final s = store.fontScale;
     if (p.table) {
       return InkWell(
@@ -1050,7 +1102,8 @@ class _PanelViewState extends State<PanelView> {
         onTap: () => _click(e, selecting),
         // Long press on touch, right click with a mouse.
         onLongPress: () => _press(e, selecting, sel),
-        onSecondaryTap: () => _press(e, selecting, sel),
+        onSecondaryTapDown: desktop ? (d) => _menu2(e, d.globalPosition) : null,
+        onSecondaryTap: desktop ? null : () => _press(e, selecting, sel),
         child: AnimatedContainer(
           key: e.name == p.cursor && _showCursor ? _cursorKey : null,
           duration: Duration(milliseconds: flash ? 120 : 380),

@@ -145,9 +145,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }
     } else if (k == Kind.image && e.ext != 'svg') {
       final imgs = cur.entries.where((x) => !x.isDir && x.kind == Kind.image && x.ext != 'svg').toList();
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImagePage(images: imgs, start: imgs.indexOf(e))));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: ImagePage(images: imgs, start: imgs.indexOf(e)))));
     } else if (isTextKind(k)) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: e.path))));
     } else {
       final ok = await Native.open(e.path, k.mimeFor(e.name));
       if (!ok && mounted) await _noApp(e);
@@ -216,11 +216,11 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       await Native.open(path, k.mimeFor(name), chooser: true);
     } else if (k == Kind.archive && extOf(name) == 'zip') {
       await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ZipPage(path: path, extractTo: other.remote ? volumes.primary : other.path, onExtract: runner.add)));
+          builder: (_) => EscCloses(child: ZipPage(path: path, extractTo: other.remote ? volumes.primary : other.path, onExtract: runner.add))));
     } else if (k == Kind.image && extOf(name) != 'svg') {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImagePage(images: [local], start: 0)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: ImagePage(images: [local], start: 0))));
     } else if (isTextKind(k)) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: path)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: path))));
     } else {
       final ok = await Native.open(path, k.mimeFor(name));
       if (!ok && mounted) await _noApp(local);
@@ -241,7 +241,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     );
     if (!mounted) return;
     if (r == 'text') {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: e.path))));
     } else if (r == 'any') {
       await Native.open(e.path, '*/*', chooser: true);
     }
@@ -388,7 +388,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       await cur.load();
       cur.focus(name);
       if (!folder && isTextKind(kindOf(name)) && mounted) {
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: path)));
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: path))));
       }
     } catch (err) {
       if (mounted) toast(context, '${tr('Nu am putut crea', 'Couldn\'t create')}: $err');
@@ -409,12 +409,14 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     if (items.isEmpty || cur.remote) return;
     final base = items.length == 1 ? stemOf(items.first.name) : nameOf(cur.path);
     final n = await askName(context,
-        title: tr('Arhivează ZIP', 'Create ZIP'),
+        title: desktop && !other.remote ? tr('Arhivează în ${shortPath(other.path)}', 'Pack into ${shortPath(other.path)}') : tr('Arhivează ZIP', 'Create ZIP'),
         initial: '${base.isEmpty ? 'arhiva' : base}.zip',
         icon: Icons.folder_zip_outlined,
         action: tr('Arhivează', 'Zip'));
     if (n == null) return;
-    runner.add(Job(JobKind.zip, items.map((e) => e.path).toList(), target: cur.path, zipName: n.toLowerCase().endsWith('.zip') ? n : '$n.zip'));
+    // TC packs into the other panel; on the phone it stays in this folder.
+    final to = desktop && !other.remote ? other.path : cur.path;
+    runner.add(Job(JobKind.zip, items.map((e) => e.path).toList(), target: to, zipName: n.toLowerCase().endsWith('.zip') ? n : '$n.zip'));
     cur.clearSelection();
   }
 
@@ -592,7 +594,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       if (has && !Platform.isWindows) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
       if (single != null && !single.isDir && canQuickView(single.name)) tile('quick', Icons.preview_outlined, tr('Previzualizare', 'Preview')),
       if (single != null && !single.isDir) tile('with', Icons.open_in_new_rounded, tr('Deschide cu', 'Open with')),
-      if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
+      if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează (ZIP)', 'Pack (ZIP)')),
       if (has) tile('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties')),
       if (single != null && single.isDir) tile('otherOpen', Icons.call_split_rounded, tr('În celălalt panou', 'In other panel')),
       if (single != null && single.isDir) tile('tab', Icons.tab_rounded, tr('În tab nou', 'In new tab')),
@@ -698,6 +700,75 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     cur.setView(table: table, grid: grid);
   }
 
+  /// Desktop right-click menu for the selection (the row under the mouse).
+  Future<void> _contextMenu(Offset at) async {
+    final items = _sel;
+    if (items.isEmpty) return;
+    final single = items.length == 1 ? items.first : null;
+    final cs = Theme.of(context).colorScheme;
+    PopupMenuEntry<String> item(String id, IconData icon, String label, [String keys = '', bool danger = false]) => PopupMenuItem(
+          value: id,
+          height: 36,
+          child: Row(children: [
+            Icon(icon, size: 18, color: danger ? cs.error : cs.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: TextStyle(fontSize: 13.5, color: danger ? cs.error : null))),
+            if (keys.isNotEmpty) ...[
+              const SizedBox(width: 24),
+              Text(keys, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ],
+          ]),
+        );
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final r = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      items: [
+        if (single != null) item('open', Icons.open_in_new_rounded, tr('Deschide', 'Open'), 'Enter'),
+        if (single != null && !single.isDir && canQuickView(single.name)) item('view', Icons.preview_outlined, tr('Previzualizare', 'Preview'), 'F3'),
+        if (single != null && !single.isDir && isTextKind(single.kind)) item('edit', Icons.edit_note_rounded, tr('Editare', 'Edit'), 'F4'),
+        if (single != null && !single.isDir) item('with', Icons.apps_rounded, tr('Deschide cu…', 'Open with…')),
+        const PopupMenuDivider(),
+        item('copy', Icons.file_copy_outlined, tr('Copiere', 'Copy'), 'F5'),
+        item('move', Icons.drive_file_move_outline, tr('Mutare', 'Move'), 'F6'),
+        item('rename', Icons.drive_file_rename_outline, single != null ? tr('Redenumire', 'Rename') : tr('Redenumire multiplă', 'Multi-rename'), single != null ? 'F2' : 'Ctrl+M'),
+        if (!cur.remote) item('zip', Icons.folder_zip_outlined, tr('Arhivează (ZIP)', 'Pack (ZIP)'), 'Alt+F5'),
+        if (single != null && single.ext == 'zip' && !cur.remote) item('unzip', Icons.unarchive_outlined, tr('Dezarhivează…', 'Unpack…'), 'Alt+F9'),
+        const PopupMenuDivider(),
+        item('path', Icons.content_copy_rounded, tr('Copiază calea', 'Copy path')),
+        item('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties'), 'Alt+Enter'),
+        item('delete', Icons.delete_outline, tr('Ștergere', 'Delete'), 'F8', true),
+      ],
+    );
+    if (r == null || !mounted) return;
+    switch (r) {
+      case 'open':
+        await open(single!);
+      case 'view':
+        await quickView(single!);
+      case 'edit':
+        _edit();
+      case 'with':
+        await (isRemote(single!.path) ? _openRemote(single, chooser: true) : Native.open(single.path, single.kind.mimeFor(single.name), chooser: true));
+      case 'copy':
+        await copyMove(false);
+      case 'move':
+        await copyMove(true);
+      case 'rename':
+        await rename();
+      case 'zip':
+        await zip();
+      case 'unzip':
+        await _zipSheet(single!);
+      case 'path':
+        await Clipboard.setData(ClipboardData(text: items.map((e) => isRemote(e.path) ? e.path : e.path.replaceAll('/', Platform.isWindows ? r'\' : '/')).join('\n')));
+      case 'props':
+        await showProperties(context, items);
+      case 'delete':
+        await delete();
+    }
+  }
+
   Future<void> _ftp() async {
     final c = await ftpConnectDialog(context);
     // Panels showing a server that was just removed go home.
@@ -719,6 +790,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   /// F3: PDFs and Office documents in the quick view, the rest as on Enter.
   Future<void> _view() async {
+    if (cur.cursorOnParent) return cur.up();
     final e = cur.cursorEntry;
     if (e == null) return;
     if (!e.isDir && canQuickView(e.name)) return quickView(e);
@@ -728,14 +800,14 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   Future<void> quickView(Entry e) async {
     final path = isRemote(e.path) ? await _fetch(e) : e.path;
     if (path == null || !mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuickViewPage(path: path)));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: quickViewFor(path))));
   }
 
   void _edit() {
     final e = cur.cursorEntry;
     if (e == null || e.isDir) return;
     if (isTextKind(e.kind) && !isRemote(e.path)) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: e.path))));
     } else {
       Native.open(e.path, e.kind.mimeFor(e.name));
     }
@@ -821,6 +893,10 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     bool target() => _target();
     Entry? at() => cur.cursorEntry;
     void openAt() {
+      if (cur.cursorOnParent) {
+        cur.up(); // Enter on "..": one level up (out of an archive too)
+        return;
+      }
       final e = at();
       if (e != null) open(e);
     }
@@ -1052,6 +1128,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
               },
               onDrawer: () => _scaffold.currentState?.openDrawer(),
               onAction: (a) => panelAction(panels[i], a),
+              onContext: _contextMenu,
             );
         // A hairline between panels; the drag zone around it is invisible.
         final line = Container(

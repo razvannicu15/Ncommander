@@ -107,7 +107,16 @@ class Panel extends ChangeNotifier {
   /// Tiles per row in the thumbnail grid (arrow keys move by a row).
   int gridCols = 1;
 
+  /// The ".." row is shown (and can hold the cursor, as in TC).
+  bool get hasParentRow => store.showParent && !atRoot && !atVolumeRoot && filter.isEmpty;
+
+  static const parentName = '..';
+
+  /// Cursor on "..": right after entering a folder, or moved there.
+  bool get cursorOnParent => hasParentRow && (cursor == parentName || cursor == null || !entries.any((e) => e.name == cursor));
+
   Entry? get cursorEntry {
+    if (cursorOnParent) return null;
     if (cursor == null) return entries.isEmpty ? null : entries.first;
     return entries.where((e) => e.name == cursor).firstOrNull ?? (entries.isEmpty ? null : entries.first);
   }
@@ -120,15 +129,16 @@ class Panel extends ChangeNotifier {
 
   /// Moves the cursor by [delta] rows (clamped); [select] toggles the row it leaves (Shift+arrows).
   void moveCursor(int delta, {bool select = false}) {
-    if (entries.isEmpty) return;
-    final at = entries.indexWhere((e) => e.name == cursor);
-    final from = at < 0 ? 0 : at;
-    if (select) {
-      final e = entries[from];
+    // Rows as the list shows them: ".." first when it's there.
+    final names = [if (hasParentRow) parentName, ...entries.map((e) => e.name)];
+    if (names.isEmpty) return;
+    var from = cursorOnParent ? 0 : names.indexOf(cursor ?? '');
+    if (from < 0) from = 0;
+    if (select && names[from] != parentName) {
+      final e = entries.firstWhere((x) => x.name == names[from]);
       if (!selected.remove(e.path)) selected.add(e.path);
     }
-    final to = at < 0 && delta > 0 ? 0 : (from + delta).clamp(0, entries.length - 1);
-    setCursor(entries[to].name);
+    setCursor(names[(from + delta).clamp(0, names.length - 1)]);
   }
 
   StreamSubscription<FileSystemEvent>? _watch;

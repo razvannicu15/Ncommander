@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/file_types.dart';
 import '../models/entry.dart';
@@ -340,4 +341,37 @@ void toast(BuildContext context, String text, {IconData? icon}) {
     ]),
     duration: const Duration(milliseconds: 2200),
   ));
+}
+
+/// Esc closes the page it wraps, whatever has focus inside it (a PDF view,
+/// a text field…). Goes through PopScope, so unsaved-changes prompts still work.
+class EscCloses extends StatefulWidget {
+  const EscCloses({super.key, required this.child});
+  final Widget child;
+  @override
+  State<EscCloses> createState() => _EscClosesState();
+}
+
+class _EscClosesState extends State<EscCloses> {
+  bool _key(KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.escape) return false;
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return false;
+    Navigator.of(context).maybePop();
+    return true;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_key);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_key);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -8,11 +8,24 @@ import '../core/i18n.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/office.dart';
+import 'viewers.dart';
 
 /// Formats the quick view (F3) can show.
 bool canQuickView(String name) {
   final e = extOf(name);
-  return e == 'pdf' || officeExts.contains(e);
+  final k = kindOf(name);
+  return e == 'pdf' || officeExts.contains(e) || isCodeOrText(name) || fontExts.contains(e) || k == Kind.video || k == Kind.audio;
+}
+
+/// The right viewer for [path]: PDF/Office, code, font, or the media player.
+Widget quickViewFor(String path) {
+  final name = nameOf(path);
+  final e = extOf(name);
+  final k = kindOf(name);
+  if (k == Kind.video || k == Kind.audio) return MediaViewPage(path: path);
+  if (fontExts.contains(e)) return FontViewPage(path: path);
+  if (e != 'pdf' && !officeExts.contains(e) && isCodeOrText(name)) return CodeViewPage(path: path);
+  return QuickViewPage(path: path);
 }
 
 /// F3 viewer for PDF and Office documents (docx, xlsx, pptx).

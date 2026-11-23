@@ -31,6 +31,19 @@ for ($i = 1; $i -le 3; $i++) {
   $gr.Dispose(); $bm.Dispose()
 }
 "Ncommander demo" | Out-File (Join-Path $home0 "notes.txt")
+@'
+<?php
+// Ncommander code view test
+function salut(string $nume): string {
+    return "Salut, " . htmlspecialchars($nume) . "!";
+}
+$lista = ['unu' => 1, 'doi' => 2];
+foreach ($lista as $k => $v) {
+    echo salut($k), " = $v<br>\n";
+}
+?>
+<html><body><h1 class="titlu">Test</h1></body></html>
+'@ | Out-File -Encoding utf8 (Join-Path $home0 "index.php")
 New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "zipsrc\docs") | Out-Null
 "a" | Out-File (Join-Path $env:TEMP "zipsrc\docs\readme.md")
 "b" | Out-File (Join-Path $env:TEMP "zipsrc\config.json")
@@ -92,10 +105,17 @@ Start-Sleep -Seconds 4
 Shot "win_10_pdf"
 $sh.SendKeys("{ESC}")
 Start-Sleep -Seconds 2
-$sh.SendKeys("{END}{UP}{UP}{UP}{UP}{UP}{UP}{ENTER}")
+$sh.SendKeys("{END}{UP}{UP}{UP}{F3}")
+Start-Sleep -Seconds 3
+Shot "win_11_code"
+$sh.SendKeys("{ESC}")
+Start-Sleep -Seconds 2
+$sh.SendKeys("{END}{UP}{UP}{UP}{UP}{UP}{UP}{UP}{ENTER}")
 Start-Sleep -Seconds 3
 Shot "win_09_zip"
-$sh.SendKeys("{BACKSPACE}")
+$sh.SendKeys("{HOME}{ENTER}")
+Start-Sleep -Seconds 2
+Shot "win_12_zip_out"
 Start-Sleep -Seconds 2
 [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null   # restore to default size
 Start-Sleep -Seconds 2
