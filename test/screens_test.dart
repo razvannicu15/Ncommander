@@ -309,5 +309,17 @@ void main() {
     await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.f2]);
     expect(store.table, isFalse, reason: 'Ctrl+F2 detailed');
     expect(s.panels[0].selected.length, 2);
+
+    // Into an archive and back out through the ".." row.
+    final p = s.panels[0];
+    final zip = '$home/Download/proiect.zip';
+    await t.runAsync(() => p.go(store.zipRoot(zip)));
+    await t.pumpAndSettle();
+    expect(p.inZip, isTrue);
+    expect(p.entries, isNotEmpty, reason: 'archive lists its files');
+    await t.tap(find.text('..').first);
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await t.pumpAndSettle();
+    expect(p.path, '$home/Download', reason: '".." leaves the archive');
   }, skip: skip);
 }
