@@ -18,6 +18,7 @@ import 'connections.dart';
 import 'dialogs.dart';
 import 'drawer.dart';
 import 'editor_page.dart';
+import 'multi_rename_page.dart';
 import 'image_page.dart';
 import 'jobs.dart';
 import 'panel_view.dart';
@@ -294,8 +295,22 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     cur.clearSelection();
   }
 
+  /// Ctrl+M: Total Commander's multi-rename tool.
+  Future<void> multiRename() async {
+    final items = _sel;
+    if (items.isEmpty) return;
+    final p = cur;
+    final done = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => MultiRenamePage(items: items, siblings: p.entries.map((e) => e.name).toSet())));
+    if (done == true) {
+      p.clearSelection();
+      await p.load();
+    }
+  }
+
   Future<void> rename() async {
     final items = _sel;
+    if (items.length > 1) return multiRename();
     if (items.length != 1) return;
     final e = items.first;
     final dir = parentOf(e.path);
@@ -768,8 +783,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }),
       sa(LogicalKeyboardKey.f5): k(() => target() ? copyMove(false) : null),
       sa(LogicalKeyboardKey.f6): k(() => target() ? copyMove(true) : null),
-      sa(LogicalKeyboardKey.f6, shift: true): k(() => target() && cur.selected.length == 1 ? rename() : null),
-      sa(LogicalKeyboardKey.f2): k(() => target() && cur.selected.length == 1 ? rename() : null),
+      sa(LogicalKeyboardKey.f6, shift: true): k(() => target() ? rename() : null),
+      sa(LogicalKeyboardKey.f2): k(() => target() ? rename() : null),
+      sa(LogicalKeyboardKey.keyM, control: true): k(() => target() ? multiRename() : null),
       sa(LogicalKeyboardKey.f7): k(createNew),
       sa(LogicalKeyboardKey.f7, alt: true): k(() => cur.remote ? null : _search(cur)),
       sa(LogicalKeyboardKey.f8): k(() => target() ? delete() : null),
@@ -978,7 +994,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           child: Row(children: [
             _BarButton(icon: Icons.file_copy_outlined, label: tr('Copiere', 'Copy'), arrow: dir, labels: labels, enabled: has, onTap: () => copyMove(false)),
             _BarButton(icon: Icons.drive_file_move_outline, label: tr('Mutare', 'Move'), arrow: dir, labels: labels, enabled: has, onTap: () => copyMove(true)),
-            _BarButton(icon: Icons.drive_file_rename_outline, label: tr('Redenumire', 'Rename'), labels: labels, enabled: n == 1, onTap: rename),
+            _BarButton(icon: Icons.drive_file_rename_outline, label: tr('Redenumire', 'Rename'), labels: labels, enabled: n >= 1, onTap: rename),
             _BarButton(icon: Icons.create_new_folder_outlined, label: tr('Nou', 'New'), labels: labels, enabled: true, onTap: createNew),
             _BarButton(icon: Icons.delete_outline, label: tr('Ștergere', 'Delete'), labels: labels, enabled: has, onTap: delete, danger: true),
             _BarButton(icon: Icons.more_horiz_rounded, label: tr('Mai mult', 'More'), labels: labels, enabled: true, onTap: more, badge: has ? n : null),
