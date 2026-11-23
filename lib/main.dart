@@ -25,13 +25,10 @@ class NcommanderApp extends StatelessWidget {
   const NcommanderApp({super.key});
 
   static ThemeData theme(Brightness b, {String? id}) {
-    final spec = store.spec;
-    final scheme = spec != null ? spec.scheme(store.accentColor) : themeById(id ?? store.themeId).scheme(b);
+    final scheme = themeById(id ?? store.themeId).scheme(b);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      fontFamily: spec != null ? 'Geist' : null,
-      scaffoldBackgroundColor: spec?.background,
       visualDensity: VisualDensity.standard,
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
@@ -60,7 +57,7 @@ class NcommanderApp extends StatelessWidget {
         key: ValueKey(currentLang),
         title: 'Ncommander',
         debugShowCheckedModeBanner: false,
-        themeMode: store.spec == null ? store.themeMode : (store.spec!.dark ? ThemeMode.dark : ThemeMode.light),
+        themeMode: store.themeMode,
         theme: theme(Brightness.light),
         darkTheme: theme(Brightness.dark),
         home: const AccessGate(),

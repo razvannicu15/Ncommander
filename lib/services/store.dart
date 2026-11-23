@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/i18n.dart';
-import '../core/styles.dart';
 import '../models/entry.dart';
 
 enum PanelLayout { auto, sideBySide, stacked }
@@ -122,18 +121,6 @@ class Store extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   int seed = themeColors.first;
   String themeId = 'amber';
-  UiStyle uiStyle = UiStyle.classic;
-
-  /// Accent picked for the modern styles (0 = the style's own).
-  int accent = 0;
-
-  bool get modern => uiStyle != UiStyle.classic;
-  StyleSpec? get spec => styleSpecs[uiStyle];
-  Color get accentColor {
-    final s = spec;
-    if (s == null) return const Color(0xFF000000);
-    return Color(s.accents.contains(accent) ? accent : s.accents.first);
-  }
   String language = 'system';
 
   PanelLayout layout = PanelLayout.auto;
@@ -182,8 +169,6 @@ class Store extends ChangeNotifier {
   void fromJson(Map<String, dynamic> j) {
     final s = Map<String, dynamic>.from((j['settings'] as Map?) ?? {});
     themeMode = _enum(ThemeMode.values, s['theme'], ThemeMode.system);
-    uiStyle = _enum(UiStyle.values, s['style'], UiStyle.classic);
-    accent = (s['accent'] as int?) ?? 0;
     seed = s['seed'] ?? seed;
     themeId = s['themeId'] ??
         switch (seed) {
@@ -226,8 +211,6 @@ class Store extends ChangeNotifier {
           'theme': themeMode.name,
           'seed': seed,
           'themeId': themeId,
-          'style': uiStyle.name,
-          'accent': accent,
           'lang': language,
           'layout': layout.name,
           'foldersFirst': foldersFirst,

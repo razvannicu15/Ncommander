@@ -101,17 +101,3 @@ String? validateName(String name) {
   if (RegExp(r'[\\/:*?"<>|]').hasMatch(n)) return tr('Fără caracterele \\ / : * ? " < > |', 'No \\ / : * ? " < > | characters');
   return null;
 }
-
-const _mRo = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
-const _mEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/// "azi, 14:05" · "5 iul." · "1 dec. 2025" — for the modern rows.
-String fmtShortDate(DateTime d, {DateTime? now}) {
-  final n = now ?? DateTime.now();
-  final m = (isEn ? _mEn : _mRo)[d.month - 1];
-  if (d.year == n.year && d.month == n.month && d.day == n.day) {
-    return '${tr('azi', 'today')}, ${_two(d.hour)}:${_two(d.minute)}';
-  }
-  if (d.year == n.year) return '${d.day} $m';
-  return '${d.day} $m ${d.year}';
-}

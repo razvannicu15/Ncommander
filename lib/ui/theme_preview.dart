@@ -1,19 +1,12 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-import '../core/styles.dart';
 import '../core/themes.dart';
-import '../services/store.dart';
 
 /// A miniature commander drawn in [theme]: header, two panels with rows,
 /// bottom bar. Tapping picks the theme.
 class ThemePreview extends StatelessWidget {
-  const ThemePreview({super.key, required this.theme, required this.brightness, required this.selected, required this.onTap, this.bare = false});
+  const ThemePreview({super.key, required this.theme, required this.brightness, required this.selected, required this.onTap});
   final AppTheme theme;
-
-  /// Only the miniature (used inside the style picker).
-  final bool bare;
   final Brightness brightness;
   final bool selected;
   final VoidCallback onTap;
@@ -63,30 +56,6 @@ class ThemePreview extends StatelessWidget {
         );
 
     final folder = cs.primary;
-    final mini = Container(
-      color: cs.surface,
-      child: Column(children: [
-        panel(active: true, rows: [
-          row(folder, 34),
-          row(const Color(0xFF2E9E5B), 40, sel: true),
-          row(const Color(0xFFD23F31), 30),
-        ]),
-        Container(height: 3, color: cs.surfaceContainerHighest),
-        panel(active: false, rows: [
-          row(const Color(0xFF2E9E5B), 38),
-          row(const Color(0xFF2E9E5B), 32),
-          row(const Color(0xFF8E5BD8), 24),
-        ]),
-        Container(
-          height: 16,
-          decoration: BoxDecoration(
-            color: cs.surfaceContainer,
-            border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6)),
-          ),
-        ),
-      ]),
-    );
-    if (bare) return mini;
     return GestureDetector(
       onTap: onTap,
       child: Column(children: [
@@ -157,99 +126,6 @@ class ThemePreview extends StatelessWidget {
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               color: selected ? outer.primary : outer.onSurfaceVariant,
             )),
-      ]),
-    );
-  }
-}
-
-/// Miniature of a modern style: background, two floating cards, the bar.
-class StylePreview extends StatelessWidget {
-  const StylePreview({super.key, required this.style, required this.selected, required this.onTap});
-  final UiStyle style;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final outer = Theme.of(context).colorScheme;
-    const w = 104.0, h = 140.0;
-    final spec = styleSpecs[style];
-    Widget inner;
-    if (spec == null) {
-      inner = ThemePreview(theme: themeById(store.themeId), brightness: Theme.of(context).brightness, selected: false, onTap: onTap, bare: true);
-    } else {
-      final accent = Color(spec.accents.first);
-      final fg = spec.onSurface;
-      Widget rowLine(double wd, {bool sel = false}) => Container(
-            height: 9,
-            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            decoration: BoxDecoration(color: sel ? accent.withValues(alpha: 0.2) : null, borderRadius: BorderRadius.circular(4)),
-            child: Row(children: [
-              Container(width: 7, height: 7, decoration: BoxDecoration(color: accent.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 4),
-              Container(width: wd, height: 3, decoration: BoxDecoration(color: fg.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2))),
-            ]),
-          );
-      Widget cardBox(bool active, List<Widget> rows) => Expanded(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: active ? (spec.shadow ? Colors.white : spec.cardActive) : spec.cardIdle,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: active ? accent : spec.idleBorder, width: active ? 1.2 : 0.6),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
-                  child: Container(width: 30, height: 4, decoration: BoxDecoration(color: fg.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(2))),
-                ),
-                ...rows,
-              ]),
-            ),
-          );
-      inner = Container(
-        color: spec.background,
-        child: Stack(children: [
-          if (spec.glow) ...[
-            Positioned(left: -30, top: -30, child: Container(width: 90, height: 90, decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: 0.35)))),
-            Positioned(right: -30, bottom: 10, child: Container(width: 80, height: 80, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF1FB5A6).withValues(alpha: 0.3)))),
-            Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18), child: const SizedBox())),
-          ],
-          Column(children: [
-            const SizedBox(height: 5),
-            cardBox(true, [rowLine(34), rowLine(28, sel: true), rowLine(38)]),
-            const SizedBox(height: 4),
-            cardBox(false, [rowLine(30), rowLine(36)]),
-            Container(
-              height: 16,
-              margin: const EdgeInsets.fromLTRB(8, 5, 8, 6),
-              decoration: BoxDecoration(color: spec.bar, borderRadius: BorderRadius.circular(8), border: Border.all(color: fg.withValues(alpha: 0.1))),
-              child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                for (var i = 0; i < 4; i++) Container(width: 6, height: 6, decoration: BoxDecoration(color: i == 3 ? accent : fg.withValues(alpha: 0.5), shape: BoxShape.circle)),
-              ]),
-            ),
-          ]),
-        ]),
-      );
-    }
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: w,
-          height: h,
-          padding: const EdgeInsets.all(2.5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: selected ? outer.primary : outer.outlineVariant.withValues(alpha: 0.6), width: selected ? 2.5 : 1),
-          ),
-          child: ClipRRect(borderRadius: BorderRadius.circular(14), child: inner),
-        ),
-        const SizedBox(height: 8),
-        Text(styleName(style),
-            style: TextStyle(fontSize: 12.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? outer.primary : outer.onSurfaceVariant)),
       ]),
     );
   }

@@ -21,16 +21,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  fonts:
-    - family: Geist
-      fonts:
-        - asset: assets/fonts/Geist-Regular.ttf
-        - asset: assets/fonts/Geist-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Geist-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Geist-Bold.ttf
-          weight: 700
 
 flutter_launcher_icons:
   image_path: "assets/icon.png"

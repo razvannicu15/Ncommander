@@ -8,7 +8,6 @@ import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/store.dart';
 import 'connections.dart';
-import 'modern.dart';
 import 'widgets.dart';
 
 enum PanelAction {
@@ -69,7 +68,6 @@ class PanelView extends StatefulWidget {
     required this.onOpen,
     required this.onDrawer,
     required this.onAction,
-    this.bottomInset = 8,
   });
 
   final Panel panel;
@@ -78,9 +76,6 @@ class PanelView extends StatefulWidget {
   final void Function(Entry) onOpen;
   final VoidCallback onDrawer;
   final void Function(PanelAction) onAction;
-
-  /// Room left under the list (the floating bar covers the bottom).
-  final double bottomInset;
 
   @override
   State<PanelView> createState() => _PanelViewState();
@@ -147,7 +142,7 @@ class _PanelViewState extends State<PanelView> {
       return;
     }
     // Detailed rows vary in height: jump near it, then centre it exactly.
-    final h = store.table && !store.modern ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(62 * store.fontScale);
+    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     final target = (idx * h - view / 2 + h / 2).clamp(0.0, _scroll.position.maxScrollExtent);
@@ -167,7 +162,6 @@ class _PanelViewState extends State<PanelView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (store.modern) return _modernBuild(cs);
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) {
@@ -184,7 +178,6 @@ class _PanelViewState extends State<PanelView> {
               return _list(cs);
             }),
           ),
-          _footer(cs),
         ]),
       ),
     );
@@ -192,19 +185,31 @@ class _PanelViewState extends State<PanelView> {
 
   // ---------------------------------------------------------------- header
 
+  /// Two tiers: folder name with counts, then a quiet path line. The active
+  /// panel is told apart by a tinted header, not by borders.
   Widget _header(ColorScheme cs) {
     final active = widget.active;
-    final bg = active ? Color.alphaBlend(cs.primary.withValues(alpha: 0.12), cs.surfaceContainer) : cs.surfaceContainerLow;
+    final bg = active ? Color.alphaBlend(cs.primary.withValues(alpha: 0.13), cs.surfaceContainer) : cs.surfaceContainerLow;
+    final sel = p.hasSelection;
+    final info = sel
+        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'}', '${p.selected.length} selected') +
+            (p.selectedBytes > 0 ? ' · ${fmtSize(p.selectedBytes)}' : '')
+        : [
+            if (p.dirCount > 0) foldersText(p.dirCount),
+            if (p.fileCount > 0) filesText(p.fileCount),
+            if (p.dirCount == 0 && p.fileCount == 0 && !p.loading) tr('Gol', 'Empty'),
+          ].join(' · ');
+    final tab = const [FontFeature.tabularFigures()];
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         color: bg,
-        border: Border(bottom: BorderSide(color: active ? cs.primary : cs.outlineVariant.withValues(alpha: 0.6), width: active ? 2 : 0.8)),
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.6)),
       ),
       child: Column(children: [
         if (p.tabs.length > 1) _tabs(cs),
-        SizedBox(
-          height: 44,
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
           child: Row(children: [
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -215,21 +220,77 @@ class _PanelViewState extends State<PanelView> {
                 widget.onDrawer();
               },
             ),
-            Expanded(child: _crumbBar(cs)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 200),
+                  style: TextStyle(
+                    fontSize: 18,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    color: active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.62),
+                  ),
+                  child: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(height: 1),
+                Text(info,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFeatures: tab,
+                      fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                      color: sel ? cs.primary : cs.onSurfaceVariant,
+                    )),
+              ]),
+            ),
             // In the table the column header sorts; the button is for the list view.
             if (!store.table)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: tr('Sortare', 'Sort'),
-              icon: Icon(_sortIcon(), size: 20, color: cs.onSurfaceVariant),
-              onPressed: () {
-                widget.onActivate();
-                widget.onAction(PanelAction.sort);
-              },
-            ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: tr('Sortare', 'Sort'),
+                icon: Icon(_sortIcon(), size: 20, color: cs.onSurfaceVariant),
+                onPressed: () {
+                  widget.onActivate();
+                  widget.onAction(PanelAction.sort);
+                },
+              ),
             _menu(cs),
           ]),
         ),
+        SizedBox(
+          height: 30,
+          child: Row(children: [
+            const SizedBox(width: 6),
+            Expanded(child: _crumbBar(cs)),
+            if (store.showFreeSpace && p.total > 0) _free(cs),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _free(ColorScheme cs) {
+    final used = 1 - p.free / p.total;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, right: 14),
+      child: Row(children: [
+        SizedBox(
+          width: 26,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: used,
+              minHeight: 3,
+              backgroundColor: cs.outlineVariant.withValues(alpha: 0.5),
+              color: used > 0.9 ? cs.error : cs.primary.withValues(alpha: 0.8),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(tr('${fmtSize(p.free)} liber', '${fmtSize(p.free)} free'),
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
       ]),
     );
   }
@@ -310,11 +371,11 @@ class _PanelViewState extends State<PanelView> {
           final last = i == crumbs.length - 1;
           final (label, path) = crumbs[i];
           return Row(children: [
-            if (i > 0) Icon(Icons.chevron_right_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+            if (i > 0) Icon(Icons.chevron_right_rounded, size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
             if (i == 0)
               Padding(
                 padding: const EdgeInsets.only(left: 2),
-                child: Icon(_rootIcon(), size: 16, color: last ? cs.primary : cs.onSurfaceVariant),
+                child: Icon(_rootIcon(), size: 14, color: last ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.8)),
               ),
             InkWell(
               borderRadius: BorderRadius.circular(8),
@@ -326,12 +387,12 @@ class _PanelViewState extends State<PanelView> {
                       p.go(path, focus: next);
                     },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
                 child: Text(label,
                     style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: last ? FontWeight.w700 : FontWeight.w500,
-                      color: last ? cs.onSurface : cs.onSurfaceVariant,
+                      fontSize: 12.5,
+                      fontWeight: last ? FontWeight.w600 : FontWeight.w500,
+                      color: last ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.85),
                     )),
               ),
             ),
@@ -416,7 +477,7 @@ class _PanelViewState extends State<PanelView> {
     if (p.entries.isEmpty) {
       final denied = p.error != null;
       body = ListView(controller: _scroll, physics: const AlwaysScrollableScrollPhysics(), children: [
-        if (parent) store.modern ? _modernParent(cs) : _parentRow(cs, h),
+        if (parent) _parentRow(cs, h),
         SizedBox(
           height: 160,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -447,14 +508,13 @@ class _PanelViewState extends State<PanelView> {
         child: ListView.builder(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemExtent: store.table && !store.modern ? h : null,
+          itemExtent: store.table ? h : null,
           itemCount: count,
-          padding: EdgeInsets.only(bottom: widget.bottomInset, top: store.modern ? 2 : 0),
+          padding: const EdgeInsets.only(bottom: 8),
           itemBuilder: (_, i) {
-            if (parent && i == 0) return store.modern ? _modernParent(cs) : _parentRow(cs, h);
+            if (parent && i == 0) return _parentRow(cs, h);
             final idx = i - (parent ? 1 : 0);
             final e = p.entries[idx];
-            if (store.modern) return _modernRow(cs, e);
             return store.table ? _tableRow(cs, e, h, i) : _row(cs, e, h);
           },
         ),
@@ -468,7 +528,7 @@ class _PanelViewState extends State<PanelView> {
       if (p.loading && p.entries.isNotEmpty)
         const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
     ]);
-    if (!store.table || store.modern) return stack;
+    if (!store.table) return stack;
     return Column(children: [_columns(cs), Expanded(child: stack)]);
   }
 
@@ -741,327 +801,7 @@ class _PanelViewState extends State<PanelView> {
     );
   }
 
-  // ---------------------------------------------------------------- modern
-
-  /// Modern styles: the panel is a floating card with an editorial header
-  /// (small path line, big folder name) and soft rounded rows.
-  Widget _modernBuild(ColorScheme cs) {
-    final spec = store.spec!;
-    final accent = store.accentColor;
-    final active = widget.active;
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) {
-        if (!active) widget.onActivate();
-      },
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 200),
-        opacity: active ? 1 : (spec.shadow ? 0.92 : 0.84),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          decoration: panelCard(spec, accent, active: active),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(27),
-            child: Column(children: [
-              _modernHeader(cs, accent),
-              if (p.filtering) _filterBar(cs),
-              Expanded(
-                child: LayoutBuilder(builder: (_, c) {
-                  _width = c.maxWidth;
-                  return _list(cs);
-                }),
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _modernHeader(ColorScheme cs, Color accent) {
-    final crumbs = p.crumbs();
-    final dim = cs.onSurfaceVariant;
-    final small = TextStyle(fontSize: 12, color: dim);
-    final title = crumbs.last.$1;
-    final info = [
-      if (p.entries.isNotEmpty) itemsText(p.entries.length),
-      if (store.showFreeSpace && p.total > 0) tr('${fmtSize(p.free)} liberi', '${fmtSize(p.free)} free'),
-    ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Path line: every part above the current folder is tappable.
-        SizedBox(
-          height: 22,
-          child: Row(children: [
-            Icon(_rootIcon(), size: 14, color: dim),
-            const SizedBox(width: 4),
-            Expanded(
-              child: ShaderMask(
-                shaderCallback: (r) => const LinearGradient(colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, 0.9, 1]).createShader(r),
-                blendMode: BlendMode.dstIn,
-                child: ListView.builder(
-                  controller: _crumbs,
-                  scrollDirection: Axis.horizontal,
-                  itemCount: crumbs.length - (crumbs.length > 1 ? 1 : 0),
-                  itemBuilder: (_, i) => Row(children: [
-                    if (i > 0) Icon(Icons.chevron_right_rounded, size: 14, color: dim.withValues(alpha: 0.7)),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        widget.onActivate();
-                        p.go(crumbs[i].$2, focus: crumbs[i + 1 < crumbs.length ? i + 1 : i].$1);
-                      },
-                      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3), child: Text(crumbs[i].$1, style: small)),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
-            if (info.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 8, right: 8), child: Text(info, style: small.copyWith(fontFeatures: const [FontFeature.tabularFigures()]))),
-          ]),
-        ),
-        Row(children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: p.atRoot || p.atVolumeRoot
-                  ? null
-                  : () {
-                      widget.onActivate();
-                      p.up();
-                    },
-              child: Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 25 * store.fontScale, height: 1.15, fontWeight: FontWeight.w600, letterSpacing: -0.5, color: cs.onSurface)),
-            ),
-          ),
-          _pillButton(cs, _sortIcon(), _sortLabel(), () {
-            widget.onActivate();
-            widget.onAction(PanelAction.sort);
-          }),
-          _menu(cs),
-        ]),
-        if (p.tabs.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, right: 8),
-            child: SizedBox(
-              height: 28,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: p.tabs.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 6),
-                itemBuilder: (_, i) {
-                  final on = i == p.activeTab;
-                  return GestureDetector(
-                    onTap: () {
-                      widget.onActivate();
-                      p.switchTab(i);
-                    },
-                    onLongPress: () => p.closeTab(i),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: on ? accent : cs.onSurface.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(p.titleOf(p.tabs[i]),
-                          style: TextStyle(fontSize: 12.5, fontWeight: on ? FontWeight.w600 : FontWeight.w500, color: on ? cs.onPrimary : cs.onSurfaceVariant)),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  String _sortLabel() => switch (p.sort.by) {
-        SortBy.name => tr('Nume', 'Name'),
-        SortBy.ext => tr('Tip', 'Type'),
-        SortBy.size => tr('Mărime', 'Size'),
-        SortBy.date => tr('Dată', 'Date'),
-      };
-
-  Widget _pillButton(ColorScheme cs, IconData icon, String label, VoidCallback onTap) => Material(
-        color: cs.onSurface.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 11),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 15, color: cs.onSurfaceVariant),
-              const SizedBox(width: 5),
-              Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.85))),
-              Icon(p.sort.asc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 12, color: cs.onSurfaceVariant),
-            ]),
-          ),
-        ),
-      );
-
-  Widget _modernParent(ColorScheme cs) {
-    final s = store.fontScale;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          widget.onActivate();
-          p.up();
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Row(children: [
-            Container(
-              width: 38 * s,
-              height: 38 * s,
-              decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
-              child: Icon(Icons.arrow_upward_rounded, size: 19 * s, color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(width: 12),
-            Text('..', style: TextStyle(fontSize: 16 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _modernRow(ColorScheme cs, Entry e) {
-    final sel = p.selected.contains(e.path);
-    final flash = _flash == e.name;
-    final s = store.fontScale;
-    final accent = store.accentColor;
-    final selecting = p.hasSelection;
-    final meta = [if (!e.isDir) fmtSize(e.size), fmtShortDate(e.modified)].join(' · ');
-
-    return Padding(
-      key: e.name == p.focusName ? _focusKey : null,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            widget.onActivate();
-            if (selecting) {
-              p.toggle(e);
-            } else {
-              widget.onOpen(e);
-            }
-          },
-          onLongPress: () {
-            widget.onActivate();
-            HapticFeedback.selectionClick();
-            if (selecting && !sel) {
-              p.selectRange(e);
-            } else {
-              p.toggle(e);
-            }
-          },
-          child: AnimatedContainer(
-            duration: Duration(milliseconds: flash ? 120 : 260),
-            curve: Curves.easeOutCubic,
-            color: sel
-                ? accent.withValues(alpha: 0.16)
-                : flash
-                    ? cs.tertiary.withValues(alpha: 0.16)
-                    : Colors.transparent,
-            padding: EdgeInsets.symmetric(horizontal: 10, vertical: store.compact ? 7 : 9),
-            child: Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  widget.onActivate();
-                  HapticFeedback.selectionClick();
-                  p.toggle(e);
-                },
-                child: Opacity(opacity: e.hidden ? 0.55 : 1, child: EntryIcon(e, size: 38 * s, selected: sel)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    e.name,
-                    style: TextStyle(
-                      fontSize: 15 * s,
-                      height: 1.22,
-                      fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w500,
-                      color: sel ? Color.lerp(accent, cs.onSurface, 0.25) : (e.hidden ? cs.onSurfaceVariant : cs.onSurface),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(meta,
-                      style: TextStyle(
-                        fontSize: 12 * s,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.85),
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      )),
-                ]),
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
   // ---------------------------------------------------------------- footer
-
-  Widget _footer(ColorScheme cs) {
-    final style = TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]);
-    final left = p.hasSelection
-        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'}', '${p.selected.length} selected') +
-            (p.selectedBytes > 0 ? ' · ${fmtSize(p.selectedBytes)}' : '')
-        : [
-            if (p.dirCount > 0) foldersText(p.dirCount),
-            if (p.fileCount > 0) filesText(p.fileCount),
-          ].join(' · ');
-    final used = p.total > 0 ? 1 - p.free / p.total : 0.0;
-    return Container(
-      height: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.6)),
-      ),
-      child: Row(children: [
-        if (p.hasSelection) ...[
-          Icon(Icons.check_circle_rounded, size: 13, color: cs.primary),
-          const SizedBox(width: 5),
-        ],
-        Expanded(
-          child: Text(left,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: p.hasSelection ? style.copyWith(color: cs.primary, fontWeight: FontWeight.w600) : style),
-        ),
-        if (store.showFreeSpace && p.total > 0) ...[
-          SizedBox(
-            width: 32,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: used,
-                minHeight: 4,
-                backgroundColor: cs.outlineVariant.withValues(alpha: 0.5),
-                color: used > 0.9 ? cs.error : cs.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(tr('${fmtSize(p.free)} liber', '${fmtSize(p.free)} free'), style: style),
-        ],
-      ]),
-    );
-  }
 }
 
 /// Path shown in dialogs: the raw path is fine for TC users.
