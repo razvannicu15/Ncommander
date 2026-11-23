@@ -190,7 +190,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             _switch(cs, Icons.create_new_folder_outlined, tr('Folderele primele', 'Folders first'), store.foldersFirst, (v) => store.foldersFirst = v),
             _switch(cs, Icons.visibility_outlined, tr('Fișiere ascunse', 'Hidden files'), store.showHidden, (v) => store.showHidden = v),
             _switch(cs, Icons.arrow_upward_rounded, tr('Rândul „..”', '".." row'), store.showParent, (v) => store.showParent = v),
-            _switch(cs, Icons.pie_chart_outline_rounded, tr('Spațiu liber', 'Free space'), store.showFreeSpace, (v) => store.showFreeSpace = v),
+            _switch(cs, Icons.pie_chart_outline_rounded, tr('Bară de ocupare', 'Usage bar'), store.showFreeSpace, (v) => store.showFreeSpace = v),
           ])),
           SectionTitle(tr('Siguranță', 'Safety')),
           Group(padding: EdgeInsets.zero, children: [

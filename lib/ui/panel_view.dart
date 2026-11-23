@@ -185,65 +185,31 @@ class _PanelViewState extends State<PanelView> {
 
   // ---------------------------------------------------------------- header
 
-  /// Two tiers: folder name with counts, then a quiet path line. The active
-  /// panel is told apart by a tinted header, not by borders.
+  /// One row: the location icon opens Locations, then the path with the
+  /// current folder emphasised. The header's bottom edge doubles as the
+  /// storage-usage bar. The active panel gets a tinted header.
   Widget _header(ColorScheme cs) {
     final active = widget.active;
     final bg = active ? Color.alphaBlend(cs.primary.withValues(alpha: 0.13), cs.surfaceContainer) : cs.surfaceContainerLow;
-    final sel = p.hasSelection;
-    final info = sel
-        ? tr('${p.selected.length} ${p.selected.length == 1 ? 'selectat' : 'selectate'}', '${p.selected.length} selected') +
-            (p.selectedBytes > 0 ? ' · ${fmtSize(p.selectedBytes)}' : '')
-        : [
-            if (p.dirCount > 0) foldersText(p.dirCount),
-            if (p.fileCount > 0) filesText(p.fileCount),
-            if (p.dirCount == 0 && p.fileCount == 0 && !p.loading) tr('Gol', 'Empty'),
-          ].join(' · ');
-    final tab = const [FontFeature.tabularFigures()];
+    final usage = store.showFreeSpace && p.total > 0 ? (1 - p.free / p.total).clamp(0.0, 1.0) : null;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.6)),
-      ),
+      color: bg,
       child: Column(children: [
         if (p.tabs.length > 1) _tabs(cs),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
+        SizedBox(
+          height: 50,
           child: Row(children: [
             IconButton(
-              visualDensity: VisualDensity.compact,
               tooltip: tr('Locații', 'Locations'),
-              icon: Icon(Icons.menu_rounded, color: active ? cs.primary : cs.onSurfaceVariant),
+              icon: Icon(_rootIcon(), size: 22, color: active ? cs.primary : cs.onSurfaceVariant),
               onPressed: () {
                 widget.onActivate();
                 widget.onDrawer();
               },
             ),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 18,
-                      height: 1.2,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                      color: active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.62),
-                    )),
-                const SizedBox(height: 1),
-                Text(info,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFeatures: tab,
-                      fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                      color: sel ? cs.primary : cs.onSurfaceVariant,
-                    )),
-              ]),
-            ),
+            Expanded(child: _crumbBar(cs)),
+            if (p.hasSelection) _selPill(cs),
             // In the table the column header sorts; the button is for the list view.
             if (!store.table)
               IconButton(
@@ -258,39 +224,37 @@ class _PanelViewState extends State<PanelView> {
             _menu(cs),
           ]),
         ),
-        SizedBox(
-          height: 30,
-          child: Row(children: [
-            const SizedBox(width: 6),
-            Expanded(child: _crumbBar(cs)),
-            if (store.showFreeSpace && p.total > 0) _free(cs),
-          ]),
-        ),
+        _usageEdge(cs, usage, active),
       ]),
     );
   }
 
-  Widget _free(ColorScheme cs) {
-    final used = 1 - p.free / p.total;
-    return Padding(
-      padding: const EdgeInsets.only(left: 6, right: 14),
-      child: Row(children: [
-        SizedBox(
-          width: 26,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: used,
-              minHeight: 3,
-              backgroundColor: cs.outlineVariant.withValues(alpha: 0.5),
-              color: used > 0.9 ? cs.error : cs.primary.withValues(alpha: 0.8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(tr('${fmtSize(p.free)} liber', '${fmtSize(p.free)} free'),
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
-      ]),
+  Widget _selPill(ColorScheme cs) {
+    final n = p.selected.length;
+    final text = p.selectedBytes > 0 ? '$n · ${fmtSize(p.selectedBytes)}' : '$n';
+    return Container(
+      margin: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(20)),
+      child: Text(text,
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onPrimary, fontFeatures: const [FontFeature.tabularFigures()])),
+    );
+  }
+
+  /// Hairline under the header; the filled part shows how full the storage is.
+  Widget _usageEdge(ColorScheme cs, double? usage, bool active) {
+    final track = cs.outlineVariant.withValues(alpha: 0.45);
+    if (usage == null) return Container(height: 1, color: track);
+    final fill = usage > 0.9 ? cs.error : (active ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.45));
+    return Tooltip(
+      message: tr('${fmtSize(p.free)} liber din ${fmtSize(p.total)}', '${fmtSize(p.free)} free of ${fmtSize(p.total)}'),
+      child: SizedBox(
+        height: 2,
+        child: Stack(children: [
+          Positioned.fill(child: ColoredBox(color: track)),
+          FractionallySizedBox(widthFactor: usage, child: AnimatedContainer(duration: const Duration(milliseconds: 200), color: fill)),
+        ]),
+      ),
     );
   }
 
@@ -371,11 +335,6 @@ class _PanelViewState extends State<PanelView> {
           final (label, path) = crumbs[i];
           return Row(children: [
             if (i > 0) Icon(Icons.chevron_right_rounded, size: 14, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-            if (i == 0)
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: Icon(_rootIcon(), size: 14, color: last ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.8)),
-              ),
             InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: last
@@ -386,12 +345,12 @@ class _PanelViewState extends State<PanelView> {
                       p.go(path, focus: next);
                     },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: Text(label,
                     style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: last ? FontWeight.w600 : FontWeight.w500,
-                      color: last ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.85),
+                      fontSize: last ? 16 : 13,
+                      fontWeight: last ? FontWeight.w700 : FontWeight.w500,
+                      color: last ? (widget.active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.65)) : cs.onSurfaceVariant.withValues(alpha: 0.8),
                     )),
               ),
             ),
