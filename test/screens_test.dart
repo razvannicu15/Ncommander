@@ -181,7 +181,7 @@ void main() {
     await shot(t, '06_copy_dialog');
 
     await commander(t, Brightness.light, left: 'Download');
-    await t.tap(find.byIcon(Icons.menu_rounded).first);
+    await t.tap(find.byTooltip('Locații').first);
     await t.pumpAndSettle();
     await shot(t, '07_drawer');
 
