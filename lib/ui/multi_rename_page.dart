@@ -213,7 +213,10 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
         const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(context),
         const SingleActivator(LogicalKeyboardKey.enter, control: true): () => _changes > 0 && !_busy ? _run() : null,
       },
-      child: Scaffold(
+      // Needs focus to receive Esc / Ctrl+Enter before a field is clicked.
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
         appBar: AppBar(
           title: Text(tr('Redenumire multiplă', 'Multi-rename')),
           actions: [
@@ -231,7 +234,7 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
         ),
         body: wide
             ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(width: 420, child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 24), child: form)),
+                SizedBox(width: 470, child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 24), child: form)),
                 VerticalDivider(width: 1, color: cs.outlineVariant),
                 Expanded(child: preview),
               ])
@@ -240,6 +243,7 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
                 Divider(height: 1, color: cs.outlineVariant),
                 Expanded(child: preview),
               ]),
+        ),
       ),
     );
   }
@@ -258,6 +262,8 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
           child: ActionChip(
             label: Text(t, style: mono.copyWith(fontSize: 12.5)),
             visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 2),
             onPressed: () => _insert(t),
           ),
         );

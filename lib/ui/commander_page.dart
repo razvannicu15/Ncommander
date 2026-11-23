@@ -740,15 +740,15 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         Container(
           width: 56,
           decoration: BoxDecoration(border: Border(left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6))),
-          child: IconButton(
-            tooltip: tr('Mai mult', 'More'),
-            visualDensity: VisualDensity.compact,
-            icon: Badge(
-              isLabelVisible: cur.selected.isNotEmpty,
-              label: Text('${cur.selected.length}'),
-              child: const Icon(Icons.more_horiz_rounded, size: 20),
-            ),
-            onPressed: more,
+          child: InkWell(
+            onTap: more,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.more_horiz_rounded, size: 20),
+              if (cur.selected.isNotEmpty) ...[
+                const SizedBox(width: 3),
+                Text('${cur.selected.length}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.primary)),
+              ],
+            ]),
           ),
         ),
       ]),
