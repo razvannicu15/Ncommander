@@ -734,18 +734,25 @@ class _PanelViewState extends State<PanelView> {
                         width: double.infinity,
                         height: double.infinity,
                         gaplessPlayback: true,
+                        // The type icon until the picture is decoded (or if it can't be).
+                        frameBuilder: (_, child, frame, sync) =>
+                            frame == null && !sync ? Center(child: EntryIcon(e, size: 52 * dz + 10, solid: true)) : child,
                         errorBuilder: (_, __, ___) => Center(child: EntryIcon(e, size: 52 * dz + 10, solid: true)),
                       ),
                     )
                   : Center(child: EntryIcon(e, size: 52 * dz + 10, selected: sel, solid: true)),
             ),
             const SizedBox(height: 6),
-            Text(
-              e.name,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12 * store.fontScale * fz, height: 1.2, color: sel ? cs.primary : (e.hidden ? cs.onSurfaceVariant : cs.onSurface)),
+            // Always two lines tall, so every tile's picture lines up.
+            SizedBox(
+              height: MediaQuery.textScalerOf(context).scale(12 * store.fontScale * fz) * 1.2 * 2 + 2,
+              child: Text(
+                e.name,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12 * store.fontScale * fz, height: 1.2, color: sel ? cs.primary : (e.hidden ? cs.onSurfaceVariant : cs.onSurface)),
+              ),
             ),
           ]),
         ),
@@ -762,8 +769,10 @@ class _PanelViewState extends State<PanelView> {
         child: Column(children: [
           Expanded(child: Center(child: Icon(Icons.subdirectory_arrow_left_rounded, size: 40, color: cs.onSurfaceVariant))),
           const SizedBox(height: 6),
-          Text('..', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 14),
+          SizedBox(
+            height: MediaQuery.textScalerOf(context).scale(12 * store.fontScale * fz) * 1.2 * 2 + 2 + 6,
+            child: Text('..', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          ),
         ]),
       );
 
