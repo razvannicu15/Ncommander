@@ -400,6 +400,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }
       files = local;
     }
+    if (!mounted) return;
     if (files.isEmpty) {
       toast(context, tr('Selectează fișiere, nu foldere', 'Select files, not folders'));
       return;
