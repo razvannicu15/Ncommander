@@ -60,6 +60,8 @@ Conn? connOf(String path) {
 /// One side of the commander: tabs, listing, selection.
 class Panel extends ChangeNotifier {
   Panel(this.side, PanelSaved? saved, String home) {
+    table = saved?.view == null ? store.table : saved!.view == 'table';
+    grid = saved?.view == 'grid';
     if (saved != null) {
       tabs.addAll(saved.tabs);
       _active = saved.active;
@@ -89,6 +91,18 @@ class Panel extends ChangeNotifier {
   /// Keyboard cursor (name of the row), like Total Commander's.
   String? cursor;
   int cursorTick = 0;
+
+  /// This panel's view (TC switches views per panel): compact table, or
+  /// thumbnails (wins over [table]).
+  bool table = false;
+  bool grid = false;
+
+  void setView({bool table = false, bool grid = false}) {
+    this.grid = grid;
+    if (!grid) this.table = table;
+    cursorTick++;
+    _changed();
+  }
 
   /// Tiles per row in the thumbnail grid (arrow keys move by a row).
   int gridCols = 1;
@@ -148,7 +162,7 @@ class Panel extends ChangeNotifier {
   int get fileCount => entries.where((e) => !e.isDir).length;
   int get dirCount => entries.where((e) => e.isDir).length;
 
-  PanelSaved get saved => PanelSaved(tabs, _active);
+  PanelSaved get saved => PanelSaved(tabs, _active, view: grid ? 'grid' : (table ? 'table' : 'list'));
 
   Future<void> load({bool keepSelection = false, bool quiet = false}) async {
     final id = ++_loadId;

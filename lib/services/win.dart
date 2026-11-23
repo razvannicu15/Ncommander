@@ -55,6 +55,7 @@ List<Volume> winVolumes() {
         path: '$letter:/',
         label: name.toDartString(),
         removable: type == _removable,
+        network: type == _remote,
         primary: letter == 'C',
         total: total,
         free: free,

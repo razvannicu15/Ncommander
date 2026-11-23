@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 import '../core/file_types.dart';
 import '../core/format.dart';
@@ -12,6 +14,7 @@ import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
+import '../services/office.dart';
 import '../services/store.dart';
 import 'connections.dart';
 import 'widgets.dart';
@@ -162,7 +165,7 @@ class _PanelViewState extends State<PanelView> {
       return;
     }
     // Detailed rows vary in height: jump near it, then centre it exactly.
-    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
+    final h = p.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     final target = (idx * h - view / 2 + h / 2).clamp(0.0, _scroll.position.maxScrollExtent);
@@ -190,7 +193,7 @@ class _PanelViewState extends State<PanelView> {
   /// Keeps the cursor row on screen, scrolling as little as possible.
   void _scrollToCursor() {
     if (!mounted || !_scroll.hasClients) return;
-    final c = (store.grid ? _gridKey : _cursorKey).currentContext;
+    final c = (p.grid ? _gridKey : _cursorKey).currentContext;
     if (c != null && c.mounted) {
       Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
       Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
@@ -199,17 +202,17 @@ class _PanelViewState extends State<PanelView> {
     // Row not built yet (Page Down, End): jump near it, then settle.
     final i = p.entries.indexWhere((e) => e.name == p.cursor);
     if (i < 0) return;
-    final grid = store.grid;
+    final grid = p.grid;
     final h = grid
         ? (_width / p.gridCols) / 0.8
-        : store.table
+        : p.table
             ? rowHeight(context)
             : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
     final idx = (i + (_showParent ? 1 : 0)) ~/ (grid ? p.gridCols : 1);
     final view = _scroll.position.viewportDimension;
     _scroll.jumpTo((idx * h - view / 2).clamp(0.0, _scroll.position.maxScrollExtent));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c2 = (store.grid ? _gridKey : _cursorKey).currentContext;
+      final c2 = (p.grid ? _gridKey : _cursorKey).currentContext;
       if (c2 != null && c2.mounted) Scrollable.ensureVisible(c2, alignment: 0.5);
     });
   }
@@ -328,7 +331,7 @@ class _PanelViewState extends State<PanelView> {
             Expanded(child: _crumbBar(cs)),
             if (p.hasSelection) _selPill(cs),
             // In the table the column header sorts; the button is for the list view.
-            if (!store.table)
+            if (!p.table)
               IconButton(
                 visualDensity: VisualDensity.compact,
                 tooltip: tr('Sortare', 'Sort'),
@@ -381,8 +384,10 @@ class _PanelViewState extends State<PanelView> {
         valueListenable: volumes,
         builder: (context, list, _) {
           final cur = !p.remote && p.path.length > 1 && p.path[1] == ':' ? p.path.substring(0, 2).toUpperCase() : null;
+          // Labels ("Windows", "Date") when the panel has room for them.
+          final labels = _width >= 120.0 * list.length + 160;
           return Container(
-            height: 32,
+            height: 40,
             decoration: BoxDecoration(
               color: cs.surfaceContainerLow,
               border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.6)),
@@ -391,49 +396,64 @@ class _PanelViewState extends State<PanelView> {
               Expanded(
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                   children: [
-                    for (final v in list) _driveButton(cs, v, v.path.substring(0, 2) == cur),
+                    for (final v in list) _driveButton(cs, v, v.path.substring(0, 2) == cur, labels),
                   ],
                 ),
               ),
               if (cur != null && p.total > 0)
                 Padding(
-                  padding: const EdgeInsets.only(left: 6, right: 10),
+                  padding: const EdgeInsets.only(left: 6, right: 12),
                   child: Text(tr('${fmtSize(p.free)} liber din ${fmtSize(p.total)}', '${fmtSize(p.free)} free of ${fmtSize(p.total)}'),
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
+                      style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
                 ),
             ]),
           );
         },
       );
 
-  Widget _driveButton(ColorScheme cs, Volume v, bool on) {
-    final letter = v.path.substring(0, 2);
-    final color = on ? cs.primary : cs.onSurface;
+  Widget _driveButton(ColorScheme cs, Volume v, bool on, bool labels) {
+    final letter = v.path.substring(0, 1).toUpperCase();
+    final fg = on ? cs.onPrimary : cs.onSurface;
+    final used = v.total > 0 ? 1 - v.free / v.total : 0.0;
+    final glyph = v.removable
+        ? Icon(Icons.usb_rounded, size: 15, color: fg)
+        : v.network
+            ? Icon(Icons.lan_outlined, size: 15, color: fg)
+            : CustomPaint(size: const Size(16, 12), painter: _DiskGlyph(fg, on ? cs.onPrimary.withValues(alpha: 0.5) : cs.primary, used));
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.only(right: 5),
       child: Tooltip(
-        message: volumes.label(v),
-        waitDuration: const Duration(milliseconds: 500),
+        message: '${volumes.label(v)}${v.total > 0 ? ' · ${tr('${fmtSize(v.free)} liber din ${fmtSize(v.total)}', '${fmtSize(v.free)} free of ${fmtSize(v.total)}')}' : ''}',
+        waitDuration: const Duration(milliseconds: 400),
         child: Material(
-          color: on ? cs.primary.withValues(alpha: 0.16) : Colors.transparent,
+          color: on ? cs.primary : cs.surface,
+          elevation: on ? 1 : 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-            side: BorderSide(color: on ? cs.primary.withValues(alpha: 0.6) : cs.outlineVariant.withValues(alpha: 0.7), width: 0.8),
+            borderRadius: BorderRadius.circular(8),
+            side: on ? BorderSide.none : BorderSide(color: cs.outlineVariant, width: 0.8),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             onTap: () {
               widget.onActivate();
-              final last = p.lastOnDrive[letter.toUpperCase()];
+              final last = p.lastOnDrive['$letter:'];
               p.go(on ? v.path : (last != null && Directory(last).existsSync() ? last : v.path));
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 9),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (v.removable) ...[Icon(Icons.usb_rounded, size: 13, color: color), const SizedBox(width: 3)],
-                Text(letter.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: color)),
+                glyph,
+                const SizedBox(width: 6),
+                Text(letter, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: fg)),
+                if (labels && v.label.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 90),
+                    child: Text(v.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: fg.withValues(alpha: 0.8))),
+                  ),
+                ],
               ]),
             ),
           ),
@@ -646,7 +666,7 @@ class _PanelViewState extends State<PanelView> {
           ]),
         ),
       ]);
-    } else if (store.grid) {
+    } else if (p.grid) {
       final ext = desktop ? 150.0 : 118.0;
       p.gridCols = (_width / ext).ceil().clamp(1, 99);
       body = Scrollbar(
@@ -675,14 +695,14 @@ class _PanelViewState extends State<PanelView> {
         child: ListView.builder(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
-          itemExtent: store.table ? h : null,
+          itemExtent: p.table ? h : null,
           itemCount: count,
           padding: const EdgeInsets.only(bottom: 8),
           itemBuilder: (_, i) {
             if (parent && i == 0) return _parentRow(cs, h);
             final idx = i - (parent ? 1 : 0);
             final e = p.entries[idx];
-            return store.table ? _tableRow(cs, e, h, i) : _row(cs, e, h);
+            return p.table ? _tableRow(cs, e, h, i) : _row(cs, e, h);
           },
         ),
       );
@@ -695,7 +715,7 @@ class _PanelViewState extends State<PanelView> {
       if (p.loading && p.entries.isNotEmpty)
         const Positioned(left: 0, right: 0, top: 0, child: LinearProgressIndicator(minHeight: 2)),
     ]);
-    if (!store.table || store.grid) return stack;
+    if (!p.table || p.grid) return stack;
     return Column(children: [_columns(cs), Expanded(child: stack)]);
   }
 
@@ -705,6 +725,7 @@ class _PanelViewState extends State<PanelView> {
     final sel = p.selected.contains(e.path);
     final cur = e.name == p.cursor && _showCursor;
     final image = e.kind == Kind.image && e.ext != 'svg' && !p.remote;
+    final icon = Center(child: EntryIcon(e, size: 52 * dz + 10, selected: sel, solid: true));
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -740,7 +761,7 @@ class _PanelViewState extends State<PanelView> {
                         errorBuilder: (_, __, ___) => Center(child: EntryIcon(e, size: 52 * dz + 10, solid: true)),
                       ),
                     )
-                  : Center(child: EntryIcon(e, size: 52 * dz + 10, selected: sel, solid: true)),
+                  : _docThumb(e) ?? icon,
             ),
             const SizedBox(height: 6),
             // Always two lines tall, so every tile's picture lines up.
@@ -760,11 +781,51 @@ class _PanelViewState extends State<PanelView> {
     );
   }
 
+  static final _thumbs = <String, Future<Uint8List?>>{};
+  static final _inTests = Platform.environment.containsKey('FLUTTER_TEST');
+
+  /// First page of a PDF, or the picture Office keeps inside docx/xlsx/pptx.
+  Widget? _docThumb(Entry e) {
+    if (p.remote || _inTests) return null;
+    Widget framed(Widget child) => Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 4, offset: Offset(0, 1))],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        );
+    if (e.ext == 'pdf') {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: 0.72,
+          child: framed(PdfDocumentViewBuilder.file(
+            e.path,
+            builder: (_, doc) => doc == null
+                ? const SizedBox()
+                : PdfPageView(document: doc, pageNumber: 1, alignment: Alignment.center),
+          )),
+        ),
+      );
+    }
+    if (officeExts.contains(e.ext)) {
+      final f = _thumbs.putIfAbsent('${e.path}|${e.modified.millisecondsSinceEpoch}', () => officeThumb(e.path));
+      return FutureBuilder<Uint8List?>(
+        future: f,
+        builder: (_, snap) => snap.data == null
+            ? Center(child: EntryIcon(e, size: 52 * dz + 10, solid: true))
+            : Center(child: framed(Image.memory(snap.data!, fit: BoxFit.contain, gaplessPlayback: true))),
+      );
+    }
+    return null;
+  }
+
   Widget _parentTile(ColorScheme cs) => InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
           widget.onActivate();
-          if (_double('..')) p.up();
+          p.up(); // one click: ".." is an action, not a file
         },
         child: Column(children: [
           Expanded(child: Center(child: Icon(Icons.subdirectory_arrow_left_rounded, size: 40, color: cs.onSurfaceVariant))),
@@ -921,11 +982,11 @@ class _PanelViewState extends State<PanelView> {
 
   Widget _parentRow(ColorScheme cs, double h) {
     final s = store.fontScale;
-    if (store.table) {
+    if (p.table) {
       return InkWell(
         onTap: () {
           widget.onActivate();
-          if (_double('..')) p.up();
+          p.up(); // one click: ".." is an action, not a file
         },
         child: Container(
           height: h,
@@ -941,7 +1002,7 @@ class _PanelViewState extends State<PanelView> {
     return InkWell(
       onTap: () {
         widget.onActivate();
-        if (_double('..')) p.up();
+        p.up(); // one click: ".." is an action, not a file
       },
       child: Row(children: [
         Padding(
@@ -1060,3 +1121,26 @@ String shortPath(String path) {
 }
 
 String panelTitle(Panel p) => p.atRoot ? '/' : nameOf(p.path);
+
+/// A small hard-disk glyph with a fill line showing how full the drive is.
+class _DiskGlyph extends CustomPainter {
+  _DiskGlyph(this.color, this.fill, this.used);
+  final Color color, fill;
+  final double used;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final body = RRect.fromRectAndRadius(Rect.fromLTWH(0.75, 0.75, s.width - 1.5, s.height - 1.5), const Radius.circular(2.5));
+    canvas.drawRRect(body, Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5);
+    // Usage bar inside the case, and the activity light.
+    final bar = Rect.fromLTWH(3, s.height - 4.5, (s.width - 9) * used.clamp(0.04, 1.0), 2);
+    canvas.drawRRect(RRect.fromRectAndRadius(bar, const Radius.circular(1)), Paint()..color = fill);
+    canvas.drawCircle(Offset(s.width - 3.5, 3.5), 1.1, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_DiskGlyph o) => o.color != color || o.fill != fill || o.used != used;
+}

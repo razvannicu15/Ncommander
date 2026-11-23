@@ -302,12 +302,13 @@ void main() {
     await combo([LogicalKeyboardKey.escape]);
 
     await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.f1]);
-    expect(store.grid, isTrue, reason: 'Ctrl+Shift+F1 thumbnails');
+    expect(s.panels[0].grid, isTrue, reason: 'Ctrl+Shift+F1 thumbnails');
     await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.f1]);
-    expect(store.grid, isFalse);
-    expect(store.table, isTrue, reason: 'Ctrl+F1 compact');
+    expect(s.panels[0].grid, isFalse);
+    expect(s.panels[0].table, isTrue, reason: 'Ctrl+F1 compact');
+    expect(s.panels[1].grid, isFalse, reason: 'other panel keeps its view');
     await combo([LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.f2]);
-    expect(store.table, isFalse, reason: 'Ctrl+F2 detailed');
+    expect(s.panels[0].table, isFalse, reason: 'Ctrl+F2 detailed');
     expect(s.panels[0].selected.length, 2);
 
     // Into an archive and back out through the ".." row.
@@ -321,5 +322,6 @@ void main() {
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await t.pumpAndSettle();
     expect(p.path, '$home/Download', reason: '".." leaves the archive');
+    await t.pump(const Duration(seconds: 2));
   }, skip: skip);
 }

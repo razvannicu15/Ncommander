@@ -20,6 +20,7 @@ import 'dialogs.dart';
 import 'drawer.dart';
 import 'editor_page.dart';
 import 'multi_rename_page.dart';
+import 'quick_view_page.dart';
 import 'image_page.dart';
 import 'jobs.dart';
 import 'panel_view.dart';
@@ -589,6 +590,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
     final actions = <Widget>[
       if (has && !Platform.isWindows) tile('share', Icons.share_outlined, tr('Distribuie', 'Share')),
+      if (single != null && !single.isDir && canQuickView(single.name)) tile('quick', Icons.preview_outlined, tr('Previzualizare', 'Preview')),
       if (single != null && !single.isDir) tile('with', Icons.open_in_new_rounded, tr('Deschide cu', 'Open with')),
       if (has && !cur.remote) tile('zip', Icons.folder_zip_outlined, tr('Arhivează', 'Zip')),
       if (has) tile('props', Icons.info_outline_rounded, tr('Proprietăți', 'Properties')),
@@ -641,6 +643,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         } else {
           await Native.open(single.path, single.kind.mimeFor(single.name), chooser: true);
         }
+      case 'quick':
+        await quickView(single!);
       case 'props':
         await showProperties(context, items);
       case 'path':
@@ -676,8 +680,11 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   }
 
   Future<void> openSettings() async {
+    final before = (store.table, store.grid);
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
     for (final p in panels) {
+      // A new default view in Settings applies to both panels.
+      if (before != (store.table, store.grid)) p.setView(table: store.table, grid: store.grid);
       p.refreshView();
     }
   }
@@ -687,12 +694,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
   late final Map<ShortcutActivator, VoidCallback> _keymap = _keys();
 
   void _setView({bool table = false, bool grid = false}) {
-    store.grid = grid;
-    if (!grid) store.table = table;
-    store.save();
-    for (final p in panels) {
-      p.setCursor(p.cursor);
-    }
+    // Only the panel you're in, like TC.
+    cur.setView(table: table, grid: grid);
   }
 
   Future<void> _ftp() async {
@@ -714,9 +717,18 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     return true;
   }
 
-  void _view() {
+  /// F3: PDFs and Office documents in the quick view, the rest as on Enter.
+  Future<void> _view() async {
     final e = cur.cursorEntry;
-    if (e != null) open(e);
+    if (e == null) return;
+    if (!e.isDir && canQuickView(e.name)) return quickView(e);
+    await open(e);
+  }
+
+  Future<void> quickView(Entry e) async {
+    final path = isRemote(e.path) ? await _fetch(e) : e.path;
+    if (path == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuickViewPage(path: path)));
   }
 
   void _edit() {
@@ -808,16 +820,19 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         };
     bool target() => _target();
     Entry? at() => cur.cursorEntry;
-    void openAt() => _view();
+    void openAt() {
+      final e = at();
+      if (e != null) open(e);
+    }
 
     const sa = SingleActivator.new;
     return {
       // Moving around
       // In the thumbnail grid Up/Down jump a whole row.
-      sa(LogicalKeyboardKey.arrowDown): k(() => cur.moveCursor(store.grid ? cur.gridCols : 1)),
-      sa(LogicalKeyboardKey.arrowUp): k(() => cur.moveCursor(store.grid ? -cur.gridCols : -1)),
-      sa(LogicalKeyboardKey.arrowRight): k(() => store.grid ? cur.moveCursor(1) : null),
-      sa(LogicalKeyboardKey.arrowLeft): k(() => store.grid ? cur.moveCursor(-1) : null),
+      sa(LogicalKeyboardKey.arrowDown): k(() => cur.moveCursor(cur.grid ? cur.gridCols : 1)),
+      sa(LogicalKeyboardKey.arrowUp): k(() => cur.moveCursor(cur.grid ? -cur.gridCols : -1)),
+      sa(LogicalKeyboardKey.arrowRight): k(() => cur.grid ? cur.moveCursor(1) : null),
+      sa(LogicalKeyboardKey.arrowLeft): k(() => cur.grid ? cur.moveCursor(-1) : null),
       sa(LogicalKeyboardKey.arrowDown, shift: true): k(() => cur.moveCursor(1, select: true)),
       sa(LogicalKeyboardKey.arrowUp, shift: true): k(() => cur.moveCursor(-1, select: true)),
       // Views, as in TC: Ctrl+F1 brief (compact table), Ctrl+F2 full (detailed), Ctrl+Shift+F1 thumbnails.
@@ -869,7 +884,8 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         }
       }),
       // Function keys
-      sa(LogicalKeyboardKey.f3): k(openAt),
+      sa(LogicalKeyboardKey.f3): k(_view),
+      _Ctrl(PhysicalKeyboardKey.keyQ): k(_view),
       sa(LogicalKeyboardKey.f4): k(_edit),
       sa(LogicalKeyboardKey.f5): k(() => target() ? copyMove(false) : null),
       sa(LogicalKeyboardKey.f6): k(() => target() ? copyMove(true) : null),

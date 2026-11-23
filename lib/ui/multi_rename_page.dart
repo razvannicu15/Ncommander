@@ -205,9 +205,7 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final wide = MediaQuery.sizeOf(context).width >= 900;
-    final form = _form(cs);
-    final preview = _preview(cs);
+    final wide = MediaQuery.sizeOf(context).width >= 960;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(context),
@@ -217,32 +215,46 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
-        appBar: AppBar(
-          title: Text(tr('Redenumire multiplă', 'Multi-rename')),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: FilledButton.icon(
-                onPressed: _changes > 0 && !_busy ? _run : null,
-                icon: _busy
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.drive_file_rename_outline, size: 18),
-                label: Text(tr('Redenumește ($_changes)', 'Rename ($_changes)')),
+          appBar: AppBar(
+            toolbarHeight: wide ? 52 : null,
+            titleSpacing: wide ? 8 : null,
+            title: Text(tr('Redenumire multiplă', 'Multi-rename'), style: TextStyle(fontSize: wide ? 18 : 20, fontWeight: FontWeight.w600)),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(
+                  child: Text(tr('${widget.items.length} elemente', '${widget.items.length} items'),
+                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                ),
               ),
+            ],
+          ),
+          body: Column(children: [
+            Container(
+              color: cs.surfaceContainerLow,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: wide
+                  ? IntrinsicHeight(
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(flex: 5, child: _masks(cs)),
+                        const SizedBox(width: 10),
+                        Expanded(flex: 4, child: _findReplace(cs)),
+                        const SizedBox(width: 10),
+                        SizedBox(width: 250, child: _counter(cs)),
+                      ]),
+                    )
+                  : Column(children: [
+                      _masks(cs),
+                      const SizedBox(height: 8),
+                      _findReplace(cs),
+                      const SizedBox(height: 8),
+                      _counter(cs),
+                    ]),
             ),
-          ],
-        ),
-        body: wide
-            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(width: 470, child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 24), child: form)),
-                VerticalDivider(width: 1, color: cs.outlineVariant),
-                Expanded(child: preview),
-              ])
-            : Column(children: [
-                form,
-                Divider(height: 1, color: cs.outlineVariant),
-                Expanded(child: preview),
-              ]),
+            Divider(height: 1, color: cs.outlineVariant),
+            Expanded(child: _preview(cs, wide)),
+            _actions(cs),
+          ]),
         ),
       ),
     );
@@ -251,59 +263,79 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
   InputDecoration _dec(String label, {Widget? suffix}) => InputDecoration(
         labelText: label,
         isDense: true,
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surface,
         suffixIcon: suffix,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       );
 
-  Widget _form(ColorScheme cs) {
-    const mono = TextStyle(fontFamily: 'monospace', fontSize: 14);
+  static const _mono = TextStyle(fontFamily: 'monospace', fontSize: 14);
+
+  Widget _card(ColorScheme cs, String title, List<Widget> children) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.8),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: cs.primary)),
+          const SizedBox(height: 10),
+          ...children,
+        ]),
+      );
+
+  Widget _masks(ColorScheme cs) {
     Widget token(String t, String tip) => Tooltip(
           message: tip,
-          child: ActionChip(
-            label: Text(t, style: mono.copyWith(fontSize: 12.5)),
-            visualDensity: VisualDensity.compact,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            onPressed: () => _insert(t),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _insert(t),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 0.8),
+              ),
+              child: Text(t, style: _mono.copyWith(fontSize: 12, color: cs.primary)),
+            ),
           ),
         );
-    Widget num(TextEditingController c, String label) => SizedBox(
-          width: 74,
-          child: TextField(
-            controller: c,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: _dec(label),
-          ),
-        );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(flex: 3, child: TextField(controller: _name, focusNode: _nameFocus, style: mono, decoration: _dec(tr('Nume', 'Name')))),
-          const SizedBox(width: 8),
-          Expanded(flex: 2, child: TextField(controller: _ext, focusNode: _extFocus, style: mono, decoration: _dec(tr('Extensie', 'Extension')))),
-        ]),
-        const SizedBox(height: 6),
-        Wrap(spacing: 4, runSpacing: 0, children: [
-          token('[N]', tr('Numele', 'Name')),
-          token('[N1-3]', tr('Caracterele 1–3 din nume', 'Characters 1–3 of the name')),
-          token('[E]', tr('Extensia', 'Extension')),
-          token('[C]', tr('Contor', 'Counter')),
-          token('[P]', tr('Folderul părinte', 'Parent folder')),
-          token('[Y][M][D]', tr('Data modificării', 'Date modified')),
-          token('[h][m][s]', tr('Ora modificării', 'Time modified')),
-        ]),
-        const SizedBox(height: 10),
+    return _card(cs, tr('MASCĂ', 'MASK'), [
+      Row(children: [
+        Expanded(flex: 3, child: TextField(controller: _name, focusNode: _nameFocus, style: _mono, decoration: _dec(tr('Nume', 'Name')))),
+        const SizedBox(width: 8),
+        Expanded(flex: 2, child: TextField(controller: _ext, focusNode: _extFocus, style: _mono, decoration: _dec(tr('Extensie', 'Extension')))),
+      ]),
+      const SizedBox(height: 8),
+      Wrap(spacing: 5, runSpacing: 5, children: [
+        token('[N]', tr('Numele', 'Name')),
+        token('[N1-3]', tr('Caracterele 1–3 din nume', 'Characters 1–3 of the name')),
+        token('[E]', tr('Extensia', 'Extension')),
+        token('[C]', tr('Contor', 'Counter')),
+        token('[P]', tr('Folderul părinte', 'Parent folder')),
+        token('[Y]-[M]-[D]', tr('Data modificării', 'Date modified')),
+        token('[h][m][s]', tr('Ora modificării', 'Time modified')),
+      ]),
+    ]);
+  }
+
+  Widget _findReplace(ColorScheme cs) => _card(cs, tr('CAUTĂ ȘI ÎNLOCUIEȘTE', 'FIND AND REPLACE'), [
         Row(children: [
           Expanded(child: TextField(controller: _search, decoration: _dec(tr('Caută', 'Find')))),
           const SizedBox(width: 8),
           Expanded(child: TextField(controller: _replace, decoration: _dec(tr('Înlocuiește cu', 'Replace with')))),
-          const SizedBox(width: 6),
-          Tooltip(
-            message: tr('Expresie regulată', 'Regular expression'),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          SizedBox(
+            height: 32,
             child: FilterChip(
-              label: const Text('.*', style: mono),
+              label: Text(tr('Regex', 'Regex')),
+              visualDensity: VisualDensity.compact,
               selected: _regex,
               onSelected: (v) {
                 _regex = v;
@@ -311,107 +343,161 @@ class _MultiRenamePageState extends State<MultiRenamePage> {
               },
             ),
           ),
-        ]),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(
-            child: SegmentedButton<CaseMode>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              segments: [
-                ButtonSegment(value: CaseMode.keep, label: Text('—', semanticsLabel: tr('Neschimbat', 'Unchanged'))),
-                const ButtonSegment(value: CaseMode.lower, label: Text('abc')),
-                const ButtonSegment(value: CaseMode.upper, label: Text('ABC')),
-                const ButtonSegment(value: CaseMode.title, label: Text('Abc')),
-              ],
-              selected: {_case},
-              onSelectionChanged: (s) {
-                _case = s.first;
-                _recalc();
-              },
-            ),
-          ),
-        ]),
-        const SizedBox(height: 10),
-        Row(children: [
-          Text(tr('Contor', 'Counter'), style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 10),
-          num(_start, tr('Start', 'Start')),
-          const SizedBox(width: 6),
-          num(_step, tr('Pas', 'Step')),
-          const SizedBox(width: 6),
-          num(_digits, tr('Cifre', 'Digits')),
           const Spacer(),
-          TextButton(
-            onPressed: () {
-              _name.text = '[N]';
-              _ext.text = '[E]';
-              _search.clear();
-              _replace.clear();
-              _start.text = '1';
-              _step.text = '1';
-              _digits.text = '1';
-              _regex = false;
-              _case = CaseMode.keep;
+          SegmentedButton<CaseMode>(
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: [
+              ButtonSegment(value: CaseMode.keep, label: const Text('Aa'), tooltip: tr('Neschimbat', 'Unchanged')),
+              ButtonSegment(value: CaseMode.lower, label: const Text('abc'), tooltip: tr('Litere mici', 'Lower case')),
+              ButtonSegment(value: CaseMode.upper, label: const Text('ABC'), tooltip: tr('Majuscule', 'Upper case')),
+              ButtonSegment(value: CaseMode.title, label: const Text('Abc'), tooltip: tr('Prima literă mare', 'Title case')),
+            ],
+            selected: {_case},
+            onSelectionChanged: (v) {
+              _case = v.first;
               _recalc();
             },
-            child: Text(tr('Resetează', 'Reset')),
           ),
         ]),
         if (_error != null) ...[
           const SizedBox(height: 6),
-          Text(_error!, style: TextStyle(color: cs.error, fontSize: 12.5)),
+          Text(_error!, style: TextStyle(color: cs.error, fontSize: 12)),
         ],
-      ]),
-    );
-  }
+      ]);
 
-  Widget _preview(ColorScheme cs) {
-    final items = widget.items;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: Text(
-          [
-            tr('$_changes de redenumit', '$_changes to rename'),
-            if (_problems > 0) tr('$_problems cu probleme', '$_problems with problems'),
-          ].join(' · '),
-          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _problems > 0 ? cs.error : cs.onSurfaceVariant),
+  Widget _counter(ColorScheme cs) {
+    Widget num(TextEditingController c, String label) => Expanded(
+          child: TextField(
+            controller: c,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: _dec(label),
+          ),
+        );
+    return _card(cs, tr('CONTOR [C]', 'COUNTER [C]'), [
+      Row(children: [
+        num(_start, tr('Start', 'Start')),
+        const SizedBox(width: 6),
+        num(_step, tr('Pas', 'Step')),
+        const SizedBox(width: 6),
+        num(_digits, tr('Cifre', 'Digits')),
+      ]),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+          onPressed: () {
+            _name.text = '[N]';
+            _ext.text = '[E]';
+            _search.clear();
+            _replace.clear();
+            _start.text = '1';
+            _step.text = '1';
+            _digits.text = '1';
+            _regex = false;
+            _case = CaseMode.keep;
+            _recalc();
+          },
+          label: Text(tr('Resetează', 'Reset')),
         ),
       ),
+    ]);
+  }
+
+  Widget _actions(ColorScheme cs) => Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainer,
+          border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6)),
+        ),
+        padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + MediaQuery.paddingOf(context).bottom),
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              [
+                tr('$_changes de redenumit', '$_changes to rename'),
+                if (_problems > 0) tr('$_problems cu probleme', '$_problems with problems'),
+              ].join(' · '),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _problems > 0 ? cs.error : cs.onSurfaceVariant),
+            ),
+          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Anulează', 'Cancel'))),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _changes > 0 && !_busy ? _run : null,
+            icon: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.drive_file_rename_outline, size: 18),
+            label: Text(tr('Redenumește', 'Rename')),
+          ),
+        ]),
+      );
+
+  Widget _preview(ColorScheme cs, bool wide) {
+    final items = widget.items;
+    final head = TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant, letterSpacing: 0.2);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (wide)
+        Container(
+          color: cs.surfaceContainerLowest,
+          padding: const EdgeInsets.fromLTRB(46, 8, 16, 8),
+          child: Row(children: [
+            Expanded(child: Text(tr('Nume actual', 'Current name'), style: head)),
+            const SizedBox(width: 32),
+            Expanded(child: Text(tr('Nume nou', 'New name'), style: head)),
+            const SizedBox(width: 24),
+          ]),
+        ),
+      if (wide) Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.6)),
       Expanded(
         child: ListView.separated(
-          padding: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.only(bottom: 12),
           itemCount: items.length,
-          separatorBuilder: (_, __) => Divider(height: 1, indent: 16, thickness: 0.5, color: cs.outlineVariant.withValues(alpha: 0.6)),
+          separatorBuilder: (_, __) => Divider(height: 1, indent: 16, thickness: 0.5, color: cs.outlineVariant.withValues(alpha: 0.5)),
           itemBuilder: (_, i) {
             final st = _states[i];
-            final color = switch (st) {
-              _State.same => cs.onSurfaceVariant,
-              _State.change => cs.onSurface,
-              _State.clash || _State.invalid => cs.error,
-            };
+            final bad = st == _State.clash || st == _State.invalid;
+            final color = bad ? cs.error : (st == _State.same ? cs.onSurfaceVariant : cs.onSurface);
+            final icon = Icon(items[i].isDir ? Icons.folder_rounded : Icons.insert_drive_file_outlined, size: 18, color: cs.onSurfaceVariant);
+            final status = bad
+                ? Tooltip(
+                    message: st == _State.clash ? tr('Numele există deja', 'Name already exists') : tr('Nume nepermis', 'Name not allowed'),
+                    child: Icon(st == _State.clash ? Icons.error_outline : Icons.block, size: 18, color: cs.error),
+                  )
+                : const SizedBox(width: 18);
+            final newName = Text(_new[i],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, fontWeight: st == _State.change ? FontWeight.w600 : FontWeight.w400, color: color));
+            if (wide) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                child: Row(children: [
+                  icon,
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(items[i].name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant))),
+                  SizedBox(width: 32, child: Icon(Icons.arrow_forward_rounded, size: 16, color: st == _State.change ? cs.primary : cs.outlineVariant)),
+                  Expanded(child: newName),
+                  const SizedBox(width: 6),
+                  status,
+                ]),
+              );
+            }
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(children: [
-                Icon(items[i].isDir ? Icons.folder_rounded : Icons.insert_drive_file_outlined, size: 18, color: cs.onSurfaceVariant),
+                icon,
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(items[i].name, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                     const SizedBox(height: 2),
-                    Text(_new[i],
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: st == _State.change ? FontWeight.w600 : FontWeight.w400,
-                          color: color,
-                        )),
+                    newName,
                   ]),
                 ),
-                if (st == _State.clash)
-                  Tooltip(message: tr('Numele există deja', 'Name already exists'), child: Icon(Icons.error_outline, size: 18, color: cs.error)),
-                if (st == _State.invalid)
-                  Tooltip(message: tr('Nume nepermis', 'Name not allowed'), child: Icon(Icons.block, size: 18, color: cs.error)),
+                status,
               ]),
             );
           },

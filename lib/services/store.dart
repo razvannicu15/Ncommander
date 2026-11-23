@@ -106,15 +106,18 @@ class TabState {
 }
 
 class PanelSaved {
-  PanelSaved(this.tabs, this.active);
+  PanelSaved(this.tabs, this.active, {this.view});
   final List<TabState> tabs;
   final int active;
-  Map<String, dynamic> toJson() => {'tabs': tabs.map((t) => t.toJson()).toList(), 'active': active};
+
+  /// 'list', 'table' or 'grid'; null = the default from Settings.
+  final String? view;
+  Map<String, dynamic> toJson() => {'tabs': tabs.map((t) => t.toJson()).toList(), 'active': active, if (view != null) 'view': view};
   static PanelSaved? fromJson(Object? j) {
     if (j is! Map) return null;
     final tabs = ((j['tabs'] as List?) ?? []).whereType<Map>().map(TabState.fromJson).toList();
     if (tabs.isEmpty) return null;
-    return PanelSaved(tabs, ((j['active'] as int?) ?? 0).clamp(0, tabs.length - 1));
+    return PanelSaved(tabs, ((j['active'] as int?) ?? 0).clamp(0, tabs.length - 1), view: j['view'] as String?);
   }
 }
 

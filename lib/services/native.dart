@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import 'win.dart';
 
 class Volume {
-  Volume({required this.path, required this.label, required this.removable, required this.primary, this.total = 0, this.free = 0});
+  Volume({required this.path, required this.label, required this.removable, required this.primary, this.total = 0, this.free = 0, this.network = false});
+
+  /// Mapped network drive (Windows).
+  final bool network;
   final String path;
   final String label;
   final bool removable;

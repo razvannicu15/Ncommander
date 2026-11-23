@@ -58,7 +58,7 @@ La prima pornire aplicația cere **acces la toate fișierele** (necesar pentru u
 Discuri locale și de rețea, FTP, aceleași teme. Google Drive și OneDrive apar deja ca foldere pe Windows, așa că lipsesc din „Conexiune nouă”.
 Taste Total Commander (merg și cu tastatură pe telefon); comenzile lucrează pe selecție sau, fără selecție, pe rândul cu cursorul:
 - săgeți, PgUp/PgDn, Home/End mută cursorul; Shift+săgeți selectează; Insert selectează și coboară; Space selectează
-- Enter / F3 deschide, F4 editează, Backspace / Ctrl+PgUp folderul părinte, Ctrl+PgDn intră în folder
+- Enter deschide cu aplicația implicită, F3 / Ctrl+Q previzualizare (PDF, docx, xlsx, pptx), F4 editează, Backspace / Ctrl+PgUp folderul părinte, Ctrl+PgDn intră în folder
 - F5 copiere, F6 mutare, Shift+F6 / F2 redenumire, F7 nou, F8 / Delete ștergere
 - Alt+F7 căutare, Alt+F5 arhivează, Alt+F9 dezarhivează, Alt+Enter proprietăți
 - Tab panoul celălalt, Alt+F1 / Alt+F2 locații stânga / dreapta, Ctrl+D locații, Ctrl+U inversează panourile
