@@ -299,6 +299,20 @@ class Panel extends ChangeNotifier {
   }
 
   /// Selects everything between the last selected row and [e] (long-press drag-less range).
+  /// Shift+click: selects from the cursor row to [e].
+  void selectSpan(Entry e) {
+    final a = entries.indexWhere((x) => x.name == cursor);
+    final b = entries.indexOf(e);
+    if (a < 0 || b < 0) {
+      toggle(e);
+      return;
+    }
+    for (var i = a < b ? a : b; i <= (a < b ? b : a); i++) {
+      selected.add(entries[i].path);
+    }
+    notifyListeners();
+  }
+
   void selectRange(Entry e) {
     final idx = entries.indexOf(e);
     int? anchor;

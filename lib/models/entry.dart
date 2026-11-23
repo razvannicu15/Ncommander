@@ -13,7 +13,11 @@ class Entry {
     this.mode = 0,
     this.id,
     this.mime,
+    this.sysHidden = false,
   });
+
+  /// Hidden or system attribute on Windows.
+  final bool sysHidden;
 
   final String path;
   final String name;
@@ -27,7 +31,7 @@ class Entry {
   final String? id;
   final String? mime;
 
-  bool get hidden => name.startsWith('.');
+  bool get hidden => sysHidden || name.startsWith('.');
   String get ext => isDir ? '' : extOf(name);
   Kind get kind => kindOf(name, dir: isDir);
 

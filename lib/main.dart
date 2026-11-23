@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/i18n.dart';
+import 'core/platform.dart';
 import 'core/themes.dart';
 import 'models/panel.dart';
 import 'services/native.dart';
@@ -30,7 +31,7 @@ class NcommanderApp extends StatelessWidget {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      visualDensity: VisualDensity.standard,
+      visualDensity: desktop ? VisualDensity.compact : VisualDensity.standard,
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -41,7 +42,8 @@ class NcommanderApp extends StatelessWidget {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
       ),
       snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-      bottomSheetTheme: const BottomSheetThemeData(showDragHandle: true),
+      // Sheets stay phone-sized in a wide Windows window.
+      bottomSheetTheme: BottomSheetThemeData(showDragHandle: true, constraints: desktop ? const BoxConstraints(maxWidth: 640) : null),
       popupMenuTheme: PopupMenuThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
       dialogTheme: DialogThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
       pageTransitionsTheme: const PageTransitionsTheme(builders: {

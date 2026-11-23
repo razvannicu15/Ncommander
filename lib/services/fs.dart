@@ -10,6 +10,7 @@ import '../core/format.dart';
 import '../core/i18n.dart';
 import '../models/entry.dart';
 import 'remote_ops.dart';
+import 'win.dart';
 
 /// Path helpers. Local paths are POSIX; remote ones look like
 /// "ftp://<connId>/folder/file" (also gdrive:// and onedrive://).
@@ -89,6 +90,7 @@ ListResult listDirSync(String dir) {
           modified: st.modified,
           isLink: isLink,
           mode: st.mode,
+          sysHidden: Platform.isWindows && winHidden(path),
         ));
       } catch (_) {}
     }

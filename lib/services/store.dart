@@ -129,7 +129,7 @@ class Store extends ChangeNotifier {
   bool foldersFirst = true;
   bool showHidden = false;
   bool thumbnails = false;
-  bool table = false;
+  bool table = Platform.isWindows;
   bool compact = true;
   bool showParent = true;
   bool confirmDelete = true;
@@ -189,7 +189,7 @@ class Store extends ChangeNotifier {
     foldersFirst = s['foldersFirst'] ?? true;
     showHidden = s['hidden'] ?? false;
     thumbnails = s['thumbs2'] ?? false;
-    table = s['compactView'] ?? false;
+    table = s['compactView'] ?? Platform.isWindows;
     compact = s['compact'] ?? true;
     showParent = s['parent'] ?? true;
     confirmDelete = s['confirmDel'] ?? true;

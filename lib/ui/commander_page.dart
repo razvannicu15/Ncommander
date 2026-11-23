@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../core/file_types.dart';
 import '../core/format.dart';
 import '../core/i18n.dart';
+import '../core/platform.dart';
 import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
@@ -679,6 +680,80 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   late final Map<ShortcutActivator, VoidCallback> _keymap = _keys();
 
+  /// Selection, or the cursor row when nothing is selected (TC).
+  bool _target() {
+    if (cur.selected.isNotEmpty) return true;
+    final e = cur.cursorEntry;
+    if (e == null) return false;
+    cur.toggle(e);
+    return true;
+  }
+
+  void _view() {
+    final e = cur.cursorEntry;
+    if (e != null) open(e);
+  }
+
+  void _edit() {
+    final e = cur.cursorEntry;
+    if (e == null || e.isDir) return;
+    if (isTextKind(e.kind) && !isRemote(e.path)) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
+    } else {
+      Native.open(e.path, e.kind.mimeFor(e.name));
+    }
+  }
+
+  /// Total Commander's function-key bar (desktop).
+  Widget _fnBar(ColorScheme cs) {
+    Widget key(String k, String label, VoidCallback onTap, {bool danger = false}) => Expanded(
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(border: Border(left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6))),
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: '$k  ', style: TextStyle(fontWeight: FontWeight.w700, color: danger ? cs.error : cs.primary)),
+                  TextSpan(text: label, style: TextStyle(color: cs.onSurface)),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainer,
+        border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6), width: 0.6)),
+      ),
+      child: Row(children: [
+        key('F3', tr('Vizualizare', 'View'), _view),
+        key('F4', tr('Editare', 'Edit'), _edit),
+        key('F5', tr('Copiere', 'Copy'), () => _target() ? copyMove(false) : null),
+        key('F6', tr('Mutare', 'Move'), () => _target() ? copyMove(true) : null),
+        key('F7', tr('Nou', 'New'), createNew),
+        key('F8', tr('Ștergere', 'Delete'), () => _target() ? delete() : null, danger: true),
+        SizedBox(
+          width: 44,
+          child: IconButton(
+            tooltip: tr('Mai mult', 'More'),
+            visualDensity: VisualDensity.compact,
+            icon: Badge(
+              isLabelVisible: cur.selected.isNotEmpty,
+              label: Text('${cur.selected.length}'),
+              child: const Icon(Icons.more_horiz_rounded, size: 20),
+            ),
+            onPressed: more,
+          ),
+        ),
+      ]),
+    );
+  }
+
   /// Keys that a text field (filter, dialogs) doesn't use reach here.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
@@ -705,19 +780,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           }
           f();
         };
-    bool target() {
-      if (cur.selected.isNotEmpty) return true;
-      final e = cur.cursorEntry;
-      if (e == null) return false;
-      cur.toggle(e);
-      return true;
-    }
-
+    bool target() => _target();
     Entry? at() => cur.cursorEntry;
-    void openAt() {
-      final e = at();
-      if (e != null) open(e);
-    }
+    void openAt() => _view();
 
     const sa = SingleActivator.new;
     return {
@@ -744,7 +809,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
         activatePanel(1);
         _scaffold.currentState?.openDrawer();
       }),
-      sa(LogicalKeyboardKey.keyD, control: true): k(() => _scaffold.currentState?.openDrawer()),
+      _Ctrl(PhysicalKeyboardKey.keyD): k(() => _scaffold.currentState?.openDrawer()),
       // Selecting
       sa(LogicalKeyboardKey.insert): k(() {
         final e = at();
@@ -762,7 +827,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }),
       sa(LogicalKeyboardKey.numpadSubtract): k(() => cur.clearSelection()),
       sa(LogicalKeyboardKey.numpadMultiply): k(() => cur.invert()),
-      sa(LogicalKeyboardKey.keyA, control: true): k(() => cur.selectAll()),
+      _Ctrl(PhysicalKeyboardKey.keyA): k(() => cur.selectAll()),
       sa(LogicalKeyboardKey.escape): k(() {
         if (cur.hasSelection) {
           cur.clearSelection();
@@ -772,20 +837,12 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }),
       // Function keys
       sa(LogicalKeyboardKey.f3): k(openAt),
-      sa(LogicalKeyboardKey.f4): k(() {
-        final e = at();
-        if (e == null || e.isDir) return;
-        if (isTextKind(e.kind) && !isRemote(e.path)) {
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
-        } else {
-          Native.open(e.path, e.kind.mimeFor(e.name));
-        }
-      }),
+      sa(LogicalKeyboardKey.f4): k(_edit),
       sa(LogicalKeyboardKey.f5): k(() => target() ? copyMove(false) : null),
       sa(LogicalKeyboardKey.f6): k(() => target() ? copyMove(true) : null),
       sa(LogicalKeyboardKey.f6, shift: true): k(() => target() ? rename() : null),
       sa(LogicalKeyboardKey.f2): k(() => target() ? rename() : null),
-      sa(LogicalKeyboardKey.keyM, control: true): k(() => target() ? multiRename() : null),
+      _Ctrl(PhysicalKeyboardKey.keyM): k(() => target() ? multiRename() : null),
       sa(LogicalKeyboardKey.f7): k(createNew),
       sa(LogicalKeyboardKey.f7, alt: true): k(() => cur.remote ? null : _search(cur)),
       sa(LogicalKeyboardKey.f8): k(() => target() ? delete() : null),
@@ -797,12 +854,12 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
       }),
       sa(LogicalKeyboardKey.enter, alt: true): k(() => target() ? showProperties(context, cur.selectedEntries) : null),
       // Panels and tabs
-      sa(LogicalKeyboardKey.keyU, control: true): k(swap),
-      sa(LogicalKeyboardKey.keyR, control: true): k(() => panelAction(cur, PanelAction.refresh)),
-      sa(LogicalKeyboardKey.keyF, control: true): k(() => panelAction(cur, PanelAction.filter)),
-      sa(LogicalKeyboardKey.keyH, control: true): k(() => panelAction(cur, PanelAction.hidden)),
-      sa(LogicalKeyboardKey.keyT, control: true): k(() => panelAction(cur, PanelAction.newTab)),
-      sa(LogicalKeyboardKey.keyW, control: true): k(() => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null),
+      _Ctrl(PhysicalKeyboardKey.keyU): k(swap),
+      _Ctrl(PhysicalKeyboardKey.keyR): k(() => panelAction(cur, PanelAction.refresh)),
+      _Ctrl(PhysicalKeyboardKey.keyF): k(() => panelAction(cur, PanelAction.filter)),
+      _Ctrl(PhysicalKeyboardKey.keyH): k(() => panelAction(cur, PanelAction.hidden)),
+      _Ctrl(PhysicalKeyboardKey.keyT): k(() => panelAction(cur, PanelAction.newTab)),
+      _Ctrl(PhysicalKeyboardKey.keyW): k(() => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null),
       sa(LogicalKeyboardKey.tab, control: true): k(() => cur.tabs.length > 1 ? cur.switchTab((cur.activeTab + 1) % cur.tabs.length) : null),
       sa(LogicalKeyboardKey.arrowLeft, control: true): k(() {
         final e = at();
@@ -899,7 +956,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
           child: Column(children: [
             Expanded(child: _panels(cs)),
             JobBar(runner: runner),
-            _bottomBar(cs),
+            desktop ? _fnBar(cs) : _bottomBar(cs),
           ]),
         ),
         ),
@@ -1052,4 +1109,21 @@ class _BarButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Ctrl+letter by key position: on Windows some Ctrl combinations (Ctrl+M is
+/// also Enter) don't arrive with the letter as their logical key.
+class _Ctrl extends ShortcutActivator {
+  const _Ctrl(this.key);
+  final PhysicalKeyboardKey key;
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) =>
+      event is! KeyUpEvent && event.physicalKey == key && state.isControlPressed && !state.isAltPressed && !state.isShiftPressed;
+
+  @override
+  Iterable<LogicalKeyboardKey>? get triggers => null;
+
+  @override
+  String debugDescribeKeys() => 'Ctrl+${key.debugName}';
 }

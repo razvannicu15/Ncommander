@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../core/format.dart';
 import '../core/i18n.dart';
+import '../core/platform.dart';
 import '../core/themes.dart';
 import '../models/entry.dart';
 import '../models/panel.dart';
@@ -32,7 +33,7 @@ enum PanelAction {
 
 /// Fixed height of a compact (single-line) row; detailed rows size themselves.
 double rowHeight(BuildContext context) =>
-    MediaQuery.textScalerOf(context).scale((store.compact ? 38.0 : 44.0) * store.fontScale);
+    MediaQuery.textScalerOf(context).scale((store.compact ? 38.0 : 44.0) * store.fontScale * (desktop ? 0.74 : 1));
 
 double _textW(BuildContext context, String t, double size) {
   final tp = TextPainter(
@@ -46,10 +47,10 @@ double _textW(BuildContext context, String t, double size) {
 /// Compact view columns, measured with the phone's text size so "38,1 KB"
 /// never gets cut. The date drops out when the panel is too narrow.
 (double, double) tableCols(BuildContext context, double width) {
-  final f = 12.5 * store.fontScale;
+  final f = 12.5 * store.fontScale * fz;
   final sizeW = _textW(context, '999,9 MB', f) + 12;
   final dateW = _textW(context, '22.11.2026', f) + 14;
-  final icon = 12 + 24 * store.fontScale + 12;
+  final icon = 12 + 24 * store.fontScale * dz + 12;
   return (sizeW, width - icon - sizeW - dateW - 12 >= 110 ? dateW : 0);
 }
 
@@ -150,7 +151,7 @@ class _PanelViewState extends State<PanelView> {
       return;
     }
     // Detailed rows vary in height: jump near it, then centre it exactly.
-    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
+    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     final target = (idx * h - view / 2 + h / 2).clamp(0.0, _scroll.position.maxScrollExtent);
@@ -183,7 +184,7 @@ class _PanelViewState extends State<PanelView> {
     // Row not built yet (Page Down, End): jump near it, then settle.
     final i = p.entries.indexWhere((e) => e.name == p.cursor);
     if (i < 0) return;
-    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
+    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale * dz);
     final idx = i + (_showParent ? 1 : 0);
     final view = _scroll.position.viewportDimension;
     _scroll.jumpTo((idx * h - view / 2).clamp(0.0, _scroll.position.maxScrollExtent));
@@ -191,6 +192,48 @@ class _PanelViewState extends State<PanelView> {
       final c2 = _cursorKey.currentContext;
       if (c2 != null && c2.mounted) Scrollable.ensureVisible(c2, alignment: 0.5);
     });
+  }
+
+  String? _lastClick;
+  DateTime _lastClickAt = DateTime(0);
+
+  /// On the desktop a click only moves the cursor; a double click opens.
+  bool _double(String name) {
+    if (!desktop) return true;
+    final now = DateTime.now();
+    final d = _lastClick == name && now.difference(_lastClickAt) < const Duration(milliseconds: 450);
+    _lastClick = d ? null : name;
+    _lastClickAt = now;
+    return d;
+  }
+
+  /// Touch: tap opens (or toggles while selecting). Mouse: click = cursor,
+  /// double click = open, Ctrl+click = select, Shift+click = select a range.
+  void _click(Entry e, bool selecting) {
+    widget.onActivate();
+    if (!desktop) {
+      p.setCursor(e.name, notify: false);
+      if (selecting) {
+        p.toggle(e);
+      } else {
+        widget.onOpen(e);
+      }
+      return;
+    }
+    final kb = HardwareKeyboard.instance;
+    if (kb.isControlPressed) {
+      p.toggle(e);
+      p.setCursor(e.name);
+      return;
+    }
+    if (kb.isShiftPressed) {
+      p.selectSpan(e);
+      p.setCursor(e.name);
+      return;
+    }
+    final open = _double(e.name);
+    p.setCursor(e.name);
+    if (open) widget.onOpen(e);
   }
 
   void _press(Entry e, bool selecting, bool sel) {
@@ -251,11 +294,12 @@ class _PanelViewState extends State<PanelView> {
       child: Column(children: [
         if (p.tabs.length > 1) _tabs(cs),
         SizedBox(
-          height: 50,
+          height: desktop ? 40 : 50,
           child: Row(children: [
             IconButton(
               tooltip: tr('Locații', 'Locations'),
-              icon: Icon(_rootIcon(), size: 22, color: active ? cs.primary : cs.onSurfaceVariant),
+              visualDensity: desktop ? VisualDensity.compact : null,
+              icon: Icon(_rootIcon(), size: desktop ? 19 : 22, color: active ? cs.primary : cs.onSurfaceVariant),
               onPressed: () {
                 widget.onActivate();
                 widget.onDrawer();
@@ -277,7 +321,8 @@ class _PanelViewState extends State<PanelView> {
             _menu(cs),
           ]),
         ),
-        _usageEdge(cs, usage, active),
+        // The drive bar already shows the free space on Windows.
+        _usageEdge(cs, desktop && store.driveBar ? null : usage, active),
       ]),
     );
   }
@@ -318,7 +363,10 @@ class _PanelViewState extends State<PanelView> {
           final cur = !p.remote && p.path.length > 1 && p.path[1] == ':' ? p.path.substring(0, 2).toUpperCase() : null;
           return Container(
             height: 32,
-            color: cs.surfaceContainerLow,
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLow,
+              border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.6)),
+            ),
             child: Row(children: [
               Expanded(
                 child: ListView(
@@ -342,7 +390,7 @@ class _PanelViewState extends State<PanelView> {
 
   Widget _driveButton(ColorScheme cs, Volume v, bool on) {
     final letter = v.path.substring(0, 2);
-    final icon = v.removable ? Icons.usb_rounded : (v.label.isEmpty && !v.primary ? Icons.lan_outlined : Icons.storage_rounded);
+    final color = on ? cs.primary : cs.onSurface;
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
@@ -362,12 +410,10 @@ class _PanelViewState extends State<PanelView> {
               p.go(on ? v.path : (last != null && Directory(last).existsSync() ? last : v.path));
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 9),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 14, color: on ? cs.primary : cs.onSurfaceVariant),
-                const SizedBox(width: 4),
-                Text(letter.substring(0, 1).toLowerCase(),
-                    style: TextStyle(fontSize: 12.5, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: on ? cs.primary : cs.onSurface)),
+                if (v.removable) ...[Icon(Icons.usb_rounded, size: 13, color: color), const SizedBox(width: 3)],
+                Text(letter.toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: color)),
               ]),
             ),
           ),
@@ -381,6 +427,7 @@ class _PanelViewState extends State<PanelView> {
     if (c != null) return connIcon(c.type);
     final v = volumes.of(p.path);
     if (v == null) return Icons.storage_rounded;
+    if (desktop) return v.removable ? Icons.usb_rounded : Icons.storage_rounded;
     return v.primary ? Icons.smartphone_rounded : (v.removable ? Icons.sd_card_outlined : Icons.usb_rounded);
   }
 
@@ -470,7 +517,7 @@ class _PanelViewState extends State<PanelView> {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: Text(label,
                     style: TextStyle(
-                      fontSize: last ? 16 : 13,
+                      fontSize: (last ? 16 : 13) * fz,
                       fontWeight: last ? FontWeight.w700 : FontWeight.w500,
                       color: last ? (widget.active ? cs.primary : cs.onSurface.withValues(alpha: 0.6)) : cs.onSurfaceVariant.withValues(alpha: 0.8),
                     )),
@@ -650,7 +697,7 @@ class _PanelViewState extends State<PanelView> {
         color: cs.surfaceContainerLowest,
         border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.6)),
       ),
-      padding: EdgeInsets.only(left: 12 + 24 * s + 12, right: 12),
+      padding: EdgeInsets.only(left: 12 + 24 * s * dz + 12, right: 12),
       child: Row(children: [
         head(p.sort.by == SortBy.ext ? tr('Nume · ext', 'Name · ext') : tr('Nume', 'Name'), p.sort.by == SortBy.ext ? SortBy.ext : SortBy.name),
         head(tr('Mărime', 'Size'), SortBy.size, width: sizeW, align: TextAlign.right),
@@ -666,21 +713,13 @@ class _PanelViewState extends State<PanelView> {
     final (sizeW, dateW) = tableCols(context, _width);
     final selecting = p.hasSelection;
     final dim = cs.onSurfaceVariant;
-    final num = TextStyle(fontSize: 12.5 * s, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()]);
+    final num = TextStyle(fontSize: 12.5 * s * fz, color: sel ? cs.primary : dim, fontFeatures: const [FontFeature.tabularFigures()]);
     final line = BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.5);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          widget.onActivate();
-          p.setCursor(e.name, notify: false);
-          if (selecting) {
-            p.toggle(e);
-          } else {
-            widget.onOpen(e);
-          }
-        },
+        onTap: () => _click(e, selecting),
         // Long press on touch, right click with a mouse.
         onLongPress: () => _press(e, selecting, sel),
         onSecondaryTap: () => _press(e, selecting, sel),
@@ -702,11 +741,13 @@ class _PanelViewState extends State<PanelView> {
           child: Row(children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                widget.onActivate();
-                HapticFeedback.selectionClick();
-                p.toggle(e);
-              },
+              onTap: desktop
+                  ? () => _click(e, selecting)
+                  : () {
+                      widget.onActivate();
+                      HapticFeedback.selectionClick();
+                      p.toggle(e);
+                    },
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
                 child: SizedBox(
@@ -714,7 +755,7 @@ class _PanelViewState extends State<PanelView> {
                   child: Center(
                     child: Opacity(
                       opacity: e.hidden ? 0.5 : 1,
-                      child: EntryIcon(e, size: 24 * s, selected: sel, plain: !store.thumbnails),
+                      child: EntryIcon(e, size: 24 * s * dz, selected: sel, plain: !store.thumbnails),
                     ),
                   ),
                 ),
@@ -726,7 +767,7 @@ class _PanelViewState extends State<PanelView> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 14 * s,
+                  fontSize: 14 * s * fz,
                   fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w400,
                   color: sel ? cs.primary : (e.hidden ? dim : cs.onSurface),
                 ),
@@ -750,27 +791,27 @@ class _PanelViewState extends State<PanelView> {
       return InkWell(
         onTap: () {
           widget.onActivate();
-          p.up();
+          if (_double('..')) p.up();
         },
         child: Container(
           height: h,
           decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45), width: 0.5))),
           child: Row(children: [
-            SizedBox(width: 12 + 24 * s + 12, child: Icon(Icons.subdirectory_arrow_left_rounded, size: 20 * s, color: cs.onSurfaceVariant)),
-            Text('..', style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+            SizedBox(width: 12 + 24 * s * dz + 12, child: Icon(Icons.subdirectory_arrow_left_rounded, size: 20 * s * dz, color: cs.onSurfaceVariant)),
+            Text('..', style: TextStyle(fontSize: 15 * s * fz, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
           ]),
         ),
       );
     }
-    final iconSize = (store.compact ? 38.0 : 44.0) * s;
+    final iconSize = (store.compact ? 38.0 : 44.0) * s * dz;
     return InkWell(
       onTap: () {
         widget.onActivate();
-        p.up();
+        if (_double('..')) p.up();
       },
       child: Row(children: [
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: store.compact ? 8 : 10),
+          padding: EdgeInsets.symmetric(horizontal: 14 * dz + 2, vertical: (store.compact ? 8 : 10) * dz),
           child: SizedBox(
             width: iconSize,
             height: iconSize * 0.8,
@@ -782,7 +823,7 @@ class _PanelViewState extends State<PanelView> {
             height: iconSize * 0.8 + (store.compact ? 16 : 20),
             alignment: Alignment.centerLeft,
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.5))),
-            child: Text('..', style: TextStyle(fontSize: 16 * s, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+            child: Text('..', style: TextStyle(fontSize: 16 * s * fz, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
           ),
         ),
       ]),
@@ -798,9 +839,9 @@ class _PanelViewState extends State<PanelView> {
     final s = store.fontScale;
     final selecting = p.hasSelection;
     final dim = cs.onSurfaceVariant;
-    final iconSize = (store.compact ? 38.0 : 44.0) * s;
+    final iconSize = (store.compact ? 38.0 : 44.0) * s * dz;
     final meta = TextStyle(
-      fontSize: 12 * s,
+      fontSize: 12 * s * fz,
       fontWeight: FontWeight.w400,
       color: sel ? cs.primary.withValues(alpha: 0.8) : dim.withValues(alpha: 0.75),
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -811,15 +852,7 @@ class _PanelViewState extends State<PanelView> {
       key: e.name == p.focusName ? _focusKey : null,
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          widget.onActivate();
-          p.setCursor(e.name, notify: false);
-          if (selecting) {
-            p.toggle(e);
-          } else {
-            widget.onOpen(e);
-          }
-        },
+        onTap: () => _click(e, selecting),
         // Long press on touch, right click with a mouse.
         onLongPress: () => _press(e, selecting, sel),
         onSecondaryTap: () => _press(e, selecting, sel),
@@ -838,27 +871,29 @@ class _PanelViewState extends State<PanelView> {
             // Tapping the icon always toggles selection (quick multi-select).
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                widget.onActivate();
-                HapticFeedback.selectionClick();
-                p.toggle(e);
-              },
+              onTap: desktop
+                  ? () => _click(e, selecting)
+                  : () {
+                      widget.onActivate();
+                      HapticFeedback.selectionClick();
+                      p.toggle(e);
+                    },
               child: Padding(
-                padding: EdgeInsets.fromLTRB(14, store.compact ? 9 : 12, 14, store.compact ? 9 : 12),
+                padding: EdgeInsets.fromLTRB(14 * dz + 2, (store.compact ? 9 : 12) * dz, 14 * dz, (store.compact ? 9 : 12) * dz),
                 child: Opacity(opacity: e.hidden ? 0.55 : 1, child: EntryIcon(e, size: iconSize, selected: sel, solid: true)),
               ),
             ),
             Expanded(
               child: Container(
-                padding: EdgeInsets.fromLTRB(0, store.compact ? 9 : 12, 14, store.compact ? 9 : 12),
-                constraints: BoxConstraints(minHeight: iconSize + (store.compact ? 18 : 24)),
+                padding: EdgeInsets.fromLTRB(0, (store.compact ? 9 : 12) * dz, 14, (store.compact ? 9 : 12) * dz),
+                constraints: BoxConstraints(minHeight: iconSize + (store.compact ? 18 : 24) * dz),
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.5))),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // The whole name, however long: it wraps instead of being cut.
                   Text(
                     e.name,
                     style: TextStyle(
-                      fontSize: 15 * s,
+                      fontSize: 15 * s * fz,
                       height: 1.2,
                       fontWeight: e.isDir ? FontWeight.w600 : FontWeight.w400,
                       color: sel ? cs.primary : (e.hidden ? dim : cs.onSurface),

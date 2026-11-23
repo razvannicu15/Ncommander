@@ -17,6 +17,19 @@ final _getVolumeInfo = _k32.lookupFunction<
 final _getFreeSpace = _k32.lookupFunction<Int32 Function(Pointer<Utf16>, Pointer<Uint64>, Pointer<Uint64>, Pointer<Uint64>),
     int Function(Pointer<Utf16>, Pointer<Uint64>, Pointer<Uint64>, Pointer<Uint64>)>('GetDiskFreeSpaceExW');
 
+final _getAttrs = _k32.lookupFunction<Uint32 Function(Pointer<Utf16>), int Function(Pointer<Utf16>)>('GetFileAttributesW');
+
+/// Hidden or system file (AppData, desktop.ini, junctions like "Application Data").
+bool winHidden(String path) {
+  final p = winPath(path).toNativeUtf16();
+  try {
+    final a = _getAttrs(p);
+    return a != 0xFFFFFFFF && a & 0x6 != 0;
+  } finally {
+    calloc.free(p);
+  }
+}
+
 const _removable = 2, _fixed = 3, _remote = 4;
 
 /// "C:/Users/x" -> "C:\Users\x" for Windows tools.
