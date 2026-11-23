@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -8,13 +10,19 @@ import '../core/i18n.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
 import '../services/office.dart';
+import '../services/office_layout.dart';
+import '../services/win.dart';
+import 'office_view.dart';
 import 'viewers.dart';
+
+/// Old binary / OpenDocument formats: Windows previews them through Office.
+const legacyOffice = {'doc', 'xls', 'ppt', 'rtf', 'odt', 'ods', 'odp', 'pps', 'ppsx'};
 
 /// Formats the quick view (F3) can show.
 bool canQuickView(String name) {
   final e = extOf(name);
   final k = kindOf(name);
-  return e == 'pdf' || officeExts.contains(e) || isCodeOrText(name) || fontExts.contains(e) || k == Kind.video || k == Kind.audio;
+  return e == 'pdf' || officeExts.contains(e) || (Platform.isWindows && legacyOffice.contains(e)) || isCodeOrText(name) || fontExts.contains(e) || k == Kind.video || k == Kind.audio;
 }
 
 /// The right viewer for [path]: PDF/Office, code, font, or the media player.
@@ -62,10 +70,54 @@ class QuickViewPage extends StatelessWidget {
               ),
             ],
           ),
-          body: ext == 'pdf' ? PdfViewer.file(path) : _Office(path: path),
+          body: ext == 'pdf' ? PdfViewer.file(path) : (Platform.isWindows ? _ViaOffice(path: path) : _Office(path: path)),
         ),
       ),
     );
+  }
+}
+
+/// Windows: the document printed to PDF by Office (looks exactly like the
+/// original); falls back to the built-in layout if Office isn't there.
+class _ViaOffice extends StatefulWidget {
+  const _ViaOffice({required this.path});
+  final String path;
+  @override
+  State<_ViaOffice> createState() => _ViaOfficeState();
+}
+
+class _ViaOfficeState extends State<_ViaOffice> {
+  String? _pdf;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    officeToPdf(widget.path).then((p) {
+      if (mounted) setState(() {
+        _pdf = p;
+        _done = true;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (!_done) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(strokeWidth: 2.5),
+          const SizedBox(height: 14),
+          Text(tr('Se pregătește previzualizarea…', 'Preparing the preview…'), style: TextStyle(color: cs.onSurfaceVariant)),
+        ]),
+      );
+    }
+    if (_pdf != null) return PdfViewer.file(_pdf!);
+    if (legacyOffice.contains(extOf(nameOf(widget.path)))) {
+      return Center(child: Text(tr('Pentru acest format e nevoie de Microsoft Office sau LibreOffice', 'This format needs Microsoft Office or LibreOffice'), style: TextStyle(color: cs.onSurfaceVariant)));
+    }
+    return _Office(path: widget.path);
   }
 }
 
@@ -78,17 +130,26 @@ class _Office extends StatefulWidget {
 
 class _OfficeState extends State<_Office> {
   OfficeContent? _c;
+  WordDoc? _doc;
+  Deck? _deck;
   String? _err;
   int _sheet = 0;
 
   @override
   void initState() {
     super.initState();
-    readOffice(widget.path).then((c) {
-      if (mounted) setState(() => _c = c);
-    }, onError: (e) {
-      if (mounted) setState(() => _err = '$e');
-    });
+    final e = extOf(nameOf(widget.path));
+    void fail(Object x) {
+      if (mounted) setState(() => _err = '$x');
+    }
+
+    if (e.startsWith('doc')) {
+      readDocx(widget.path).then((d) => mounted ? setState(() => _doc = d) : null, onError: fail);
+    } else if (e.startsWith('ppt')) {
+      readPptx(widget.path).then((d) => mounted ? setState(() => _deck = d) : null, onError: fail);
+    } else {
+      readOffice(widget.path).then((c) => mounted ? setState(() => _c = c) : null, onError: fail);
+    }
   }
 
   @override
@@ -97,6 +158,8 @@ class _OfficeState extends State<_Office> {
     if (_err != null) {
       return Center(child: Text(tr('Nu am putut citi documentul', 'Couldn\'t read the document'), style: TextStyle(color: cs.onSurfaceVariant)));
     }
+    if (_doc != null) return WordView(doc: _doc!);
+    if (_deck != null) return DeckView(deck: _deck!);
     final c = _c;
     if (c == null) return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     if (c.sheets.isNotEmpty) return _sheets(cs, c.sheets);

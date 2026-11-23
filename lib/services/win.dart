@@ -118,3 +118,42 @@ Future<int?> winAccent() async {
 
 /// The user's folders, for the Locations drawer.
 String get winHome => (Platform.environment['USERPROFILE'] ?? 'C:/Users').replaceAll(r'\', '/');
+
+/// Exact preview of Office files on Windows: Word / Excel / PowerPoint (or
+/// LibreOffice) print them to a PDF once; the copy is reused until the file
+/// changes. Null when neither is installed or the export fails.
+Future<String?> officeToPdf(String path) async {
+  try {
+    final st = File(path).statSync();
+    final dir = Directory('${Directory.systemTemp.path}\\ncommander_preview')..createSync(recursive: true);
+    final key = '${path.hashCode.toUnsigned(32).toRadixString(36)}_${st.modified.millisecondsSinceEpoch}_${st.size}';
+    final out = '${dir.path}\\$key.pdf';
+    if (File(out).existsSync() && File(out).lengthSync() > 0) return out;
+    final src = winPath(path);
+    String q(String s) => s.replaceAll("'", "''");
+    final ext = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
+    final script = switch (ext) {
+      'doc' || 'docx' || 'docm' || 'rtf' || 'odt' || 'dot' || 'dotx' =>
+        "\$a=New-Object -ComObject Word.Application;\$a.Visible=\$false;\$a.DisplayAlerts=0;\$d=\$a.Documents.Open('${q(src)}',\$false,\$true,\$false);\$d.ExportAsFixedFormat('${q(out)}',17);\$d.Close(0);\$a.Quit()",
+      'xls' || 'xlsx' || 'xlsm' || 'ods' || 'csv' =>
+        "\$a=New-Object -ComObject Excel.Application;\$a.Visible=\$false;\$a.DisplayAlerts=\$false;\$w=\$a.Workbooks.Open('${q(src)}',0,\$true);\$w.ExportAsFixedFormat(0,'${q(out)}');\$w.Close(\$false);\$a.Quit()",
+      _ =>
+        "\$a=New-Object -ComObject PowerPoint.Application;\$p=\$a.Presentations.Open('${q(src)}',\$true,\$false,\$false);\$p.SaveAs('${q(out)}',32);\$p.Close();\$a.Quit()",
+    };
+    final r = await Process.run('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script])
+        .timeout(const Duration(seconds: 90));
+    if (r.exitCode == 0 && File(out).existsSync()) return out;
+    // LibreOffice, if installed.
+    for (final soffice in [r'C:\Program Files\LibreOffice\program\soffice.exe', r'C:\Program Files (x86)\LibreOffice\program\soffice.exe']) {
+      if (!File(soffice).existsSync()) continue;
+      final tmp = Directory('${dir.path}\\lo_$key')..createSync(recursive: true);
+      await Process.run(soffice, ['--headless', '--convert-to', 'pdf', '--outdir', tmp.path, src]).timeout(const Duration(seconds: 90));
+      final made = tmp.listSync().whereType<File>().where((f) => f.path.toLowerCase().endsWith('.pdf')).firstOrNull;
+      if (made != null) {
+        made.renameSync(out);
+        return out;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
