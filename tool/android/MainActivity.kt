@@ -59,6 +59,9 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "hasAccess" -> result.success(hasAccess())
+                    "systemAccent" -> result.success(
+                        if (Build.VERSION.SDK_INT >= 31) resources.getColor(android.R.color.system_accent1_500, theme) else null
+                    )
                     "requestAccess" -> {
                         requestAccess()
                         result.success(null)

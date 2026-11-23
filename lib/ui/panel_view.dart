@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../core/format.dart';
 import '../core/i18n.dart';
+import '../core/themes.dart';
 import '../models/entry.dart';
 import '../models/panel.dart';
 import '../services/fs.dart';
@@ -172,11 +173,17 @@ class _PanelViewState extends State<PanelView> {
         child: Column(children: [
           _header(cs),
           if (p.filtering) _filterBar(cs),
+          // The inactive panel steps back a little.
           Expanded(
-            child: LayoutBuilder(builder: (_, c) {
-              _width = c.maxWidth;
-              return _list(cs);
-            }),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              // A wash of the background is cheaper than an opacity layer while scrolling.
+              foregroundDecoration: BoxDecoration(color: cs.surface.withValues(alpha: widget.active ? 0 : 0.3)),
+              child: LayoutBuilder(builder: (_, c) {
+                _width = c.maxWidth;
+                return _list(cs);
+              }),
+            ),
           ),
         ]),
       ),
@@ -190,7 +197,7 @@ class _PanelViewState extends State<PanelView> {
   /// storage-usage bar. The active panel gets a tinted header.
   Widget _header(ColorScheme cs) {
     final active = widget.active;
-    final bg = active ? Color.alphaBlend(cs.primary.withValues(alpha: 0.13), cs.surfaceContainer) : cs.surfaceContainerLow;
+    final bg = active ? activeHeader(cs) : cs.surfaceContainerLow;
     final usage = store.showFreeSpace && p.total > 0 ? (1 - p.free / p.total).clamp(0.0, 1.0) : null;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -354,7 +361,7 @@ class _PanelViewState extends State<PanelView> {
                     style: TextStyle(
                       fontSize: last ? 16 : 13,
                       fontWeight: last ? FontWeight.w700 : FontWeight.w500,
-                      color: last ? (widget.active ? cs.onSurface : cs.onSurface.withValues(alpha: 0.65)) : cs.onSurfaceVariant.withValues(alpha: 0.8),
+                      color: last ? (widget.active ? cs.primary : cs.onSurface.withValues(alpha: 0.6)) : cs.onSurfaceVariant.withValues(alpha: 0.8),
                     )),
               ),
             ),

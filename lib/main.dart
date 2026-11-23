@@ -12,6 +12,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   Native.init();
+  systemAccent = await Native.systemAccent();
   await store.load();
   await volumes.refresh();
   accessGranted = await Native.hasAccess();
@@ -24,8 +25,8 @@ bool accessGranted = false;
 class NcommanderApp extends StatelessWidget {
   const NcommanderApp({super.key});
 
-  static ThemeData theme(Brightness b, {String? id}) {
-    final scheme = themeById(id ?? store.themeId).scheme(b);
+  static ThemeData theme(Brightness b) {
+    final scheme = buildScheme(baseById(store.base), accentColor(store.accent), b);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,

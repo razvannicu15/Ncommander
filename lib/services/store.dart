@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/i18n.dart';
+import '../core/themes.dart';
 import '../models/entry.dart';
 
 enum PanelLayout { auto, sideBySide, stacked }
@@ -120,7 +121,8 @@ class PanelSaved {
 class Store extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   int seed = themeColors.first;
-  String themeId = 'amber';
+  String base = 'paper';
+  String accent = 'amber';
   String language = 'system';
 
   PanelLayout layout = PanelLayout.auto;
@@ -170,7 +172,7 @@ class Store extends ChangeNotifier {
     final s = Map<String, dynamic>.from((j['settings'] as Map?) ?? {});
     themeMode = _enum(ThemeMode.values, s['theme'], ThemeMode.system);
     seed = s['seed'] ?? seed;
-    themeId = s['themeId'] ??
+    final old = s['themeId'] as String? ??
         switch (seed) {
           0xFF0E7C66 => 'forest',
           0xFF6750A4 || 0xFF3F51B5 => 'dusk',
@@ -178,6 +180,9 @@ class Store extends ChangeNotifier {
           0xFF5D6B7A => 'graphite',
           _ => 'amber',
         };
+    final (b0, a0) = migrateTheme(old);
+    base = s['base'] ?? b0;
+    accent = s['accent'] ?? a0;
     language = s['lang'] ?? 'system';
     layout = _enum(PanelLayout.values, s['layout'], PanelLayout.auto);
     foldersFirst = s['foldersFirst'] ?? true;
@@ -210,7 +215,8 @@ class Store extends ChangeNotifier {
         'settings': {
           'theme': themeMode.name,
           'seed': seed,
-          'themeId': themeId,
+          'base': base,
+          'accent': accent,
           'lang': language,
           'layout': layout.name,
           'foldersFirst': foldersFirst,

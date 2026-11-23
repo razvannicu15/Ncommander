@@ -44,6 +44,11 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     if (mounted) setState(() => _access = a);
   }
 
+  Widget _sub(ColorScheme cs, String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Text(text, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
+      );
+
   void _set(VoidCallback f) {
     f();
     store.save();
@@ -118,24 +123,45 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+          _sub(cs, tr('Temă', 'Theme')),
           SizedBox(
             height: 176,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: appThemes.length,
+              itemCount: baseThemes.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) {
-                final t = appThemes[i];
+                final t = baseThemes[i];
                 return ThemePreview(
-                  theme: t,
-                  brightness: Theme.of(context).brightness,
-                  selected: store.themeId == t.id,
-                  onTap: () => _set(() => store.themeId = t.id),
+                  scheme: buildScheme(t, accentColor(store.accent), Theme.of(context).brightness),
+                  name: t.name,
+                  selected: store.base == t.id,
+                  onTap: () => _set(() => store.base = t.id),
                 );
               },
             ),
+          ),
+          const SizedBox(height: 10),
+          _sub(cs, tr('Accent', 'Accent')),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+            child: Wrap(spacing: 12, runSpacing: 12, children: [
+              if (systemAccent != null)
+                Tooltip(
+                  message: tr('Din tapet', 'From wallpaper'),
+                  child: Stack(alignment: Alignment.center, children: [
+                    ColorDot(systemAccent!, selected: store.accent == 'system', onTap: () => _set(() => store.accent = 'system')),
+                    if (store.accent != 'system') const IgnorePointer(child: Icon(Icons.wallpaper_rounded, size: 16, color: Colors.white)),
+                  ]),
+                ),
+              for (final a in accents)
+                Tooltip(
+                  message: a.name,
+                  child: ColorDot(a.color, selected: store.accent == a.id, onTap: () => _set(() => store.accent = a.id)),
+                ),
+            ]),
           ),
           SectionTitle(tr('Panouri', 'Panels')),
           Padding(

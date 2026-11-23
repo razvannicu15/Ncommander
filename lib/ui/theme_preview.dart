@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../core/themes.dart';
 
-/// A miniature commander drawn in [theme]: header, two panels with rows,
+/// A miniature commander drawn in [scheme]: header, two panels with rows,
 /// bottom bar. Tapping picks the theme.
 class ThemePreview extends StatelessWidget {
-  const ThemePreview({super.key, required this.theme, required this.brightness, required this.selected, required this.onTap});
-  final AppTheme theme;
-  final Brightness brightness;
+  const ThemePreview({super.key, required this.scheme, required this.name, required this.selected, required this.onTap});
+  final ColorScheme scheme;
+  final String name;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final cs = theme.scheme(brightness);
+    final cs = scheme;
     final outer = Theme.of(context).colorScheme;
     const w = 104.0, h = 140.0;
 
@@ -44,14 +44,17 @@ class ThemePreview extends StatelessWidget {
             Container(
               height: 13,
               decoration: BoxDecoration(
-                color: active ? Color.alphaBlend(cs.primary.withValues(alpha: 0.12), cs.surfaceContainer) : cs.surfaceContainerLow,
+                color: active ? activeHeader(cs) : cs.surfaceContainerLow,
                 border: Border(bottom: BorderSide(color: active ? cs.primary : cs.outlineVariant, width: active ? 1.4 : 0.6)),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 4),
               alignment: Alignment.centerLeft,
-              child: Container(width: 26, height: 3, decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2))),
+              child: Container(width: 26, height: 3, decoration: BoxDecoration(color: (active ? cs.primary : cs.onSurfaceVariant).withValues(alpha: active ? 0.9 : 0.6), borderRadius: BorderRadius.circular(2))),
             ),
-            for (var i = 0; i < rows.length; i++) ...[rows[i], if (i < rows.length - 1) line()],
+            Opacity(
+              opacity: active ? 1 : 0.62,
+              child: Column(children: [for (var i = 0; i < rows.length; i++) ...[rows[i], if (i < rows.length - 1) line()]]),
+            ),
           ]),
         );
 
@@ -79,7 +82,7 @@ class ThemePreview extends StatelessWidget {
                     row(const Color(0xFF2E9E5B), 40, sel: true),
                     row(const Color(0xFFD23F31), 30),
                   ]),
-                  Container(height: 3, color: cs.surfaceContainerHighest),
+                  Container(height: 0.8, color: cs.outlineVariant),
                   panel(active: false, rows: [
                     row(const Color(0xFF2E9E5B), 38),
                     row(const Color(0xFF2E9E5B), 32),
@@ -120,7 +123,7 @@ class ThemePreview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(theme.name,
+        Text(name,
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -130,3 +133,4 @@ class ThemePreview extends StatelessWidget {
     );
   }
 }
+

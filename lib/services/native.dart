@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Color;
 
 import 'package:flutter/services.dart';
 
@@ -27,6 +28,12 @@ class Native {
   /// "All files access" on Android 11+, storage permission before.
   static Future<bool> hasAccess() async => (await _call<bool>('hasAccess')) ?? true;
   static Future<void> requestAccess() => _call('requestAccess');
+
+  /// Wallpaper accent on Android 12+, otherwise null.
+  static Future<Color?> systemAccent() async {
+    final v = await _call<int>('systemAccent');
+    return v == null ? null : Color(v);
+  }
 
   static Future<List<Volume>> volumes() async {
     final r = await _call<List<Object?>>('volumes');

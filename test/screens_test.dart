@@ -247,13 +247,23 @@ void main() {
     await shot(t, '18_detailed_bigfont');
     t.platformDispatcher.clearTextScaleFactorTestValue();
 
-    // Theme presets on the main screen.
-    for (final (id, b) in [('graphite', Brightness.light), ('nord', Brightness.dark), ('black', Brightness.dark), ('ocean', Brightness.light)]) {
-      store.themeId = id;
+    // Background × accent combinations on the main screen.
+    for (final (base, acc, b) in [
+      ('graphite', 'blue', Brightness.light),
+      ('nord', 'teal', Brightness.dark),
+      ('oled', 'coral', Brightness.dark),
+      ('slate', 'violet', Brightness.light),
+      ('ink', 'amber', Brightness.dark),
+      ('sage', 'green', Brightness.light),
+      ('paper', 'red', Brightness.dark),
+    ]) {
+      store.base = base;
+      store.accent = acc;
       await commander(t, b, left: 'Download', select: ['concert.mp4']);
-      await shot(t, '19_theme_${id}_${b.name}');
+      await shot(t, '19_theme_${base}_${acc}_${b.name}');
     }
-    store.themeId = 'amber';
+    store.base = 'paper';
+    store.accent = 'amber';
 
     store.language = 'en';
     setLanguage('en');
