@@ -21,7 +21,7 @@ Future<String?> askTarget(BuildContext context, {required bool move, required Li
       final cs = Theme.of(ctx).colorScheme;
       // The friendly destination; tap it to type a path instead (TC's F5 field).
       final card = Material(
-        color: cs.surfaceContainerHigh,
+        color: cs.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
