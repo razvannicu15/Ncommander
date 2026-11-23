@@ -266,6 +266,11 @@ void main() {
     store.base = 'paper';
     store.accent = 'amber';
 
+    store.grid = true;
+    await commander(t, Brightness.light, left: 'DCIM/Camera', right: 'Download', select: ['IMG_20261121_142705.jpg']);
+    await shot(t, '25_thumbnails');
+    store.grid = false;
+
     store.language = 'en';
     setLanguage('en');
     await commander(t, Brightness.light, left: 'Download', select: ['poze_vacanta.zip', 'concert.mp4']);
