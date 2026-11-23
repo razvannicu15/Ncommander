@@ -94,6 +94,7 @@ class _Style {
   double? before, after;
   int heading = 0;
   String? basedOn;
+  bool? list;
 }
 
 WordDoc _docx(String path) {
@@ -145,6 +146,7 @@ WordDoc _docx(String path) {
         s.font = rpr.child('w:rFonts')?['w:ascii'];
       }
       final ppr = st.child('w:pPr');
+      if (ppr?.child('w:numPr') != null || name.startsWith('list bullet') || name.startsWith('list number')) s.list = true;
       if (ppr != null) {
         s.align = ppr.child('w:jc')?['w:val'];
         final sp = ppr.child('w:spacing');
@@ -251,7 +253,7 @@ WordDoc _docx(String path) {
         indent: (int.tryParse(ind?['w:left'] ?? ind?['w:start'] ?? '') ?? 0) / 20,
         firstLine: ((int.tryParse(ind?['w:firstLine'] ?? '') ?? 0) - (int.tryParse(ind?['w:hanging'] ?? '') ?? 0)) / 20,
         lineHeight: line != null && (sp?['w:lineRule'] ?? 'auto') == 'auto' ? (line / 240 * 1.15).clamp(0.9, 3.0) : 1.15,
-        bullet: num != null ? '•' : null,
+        bullet: num != null || (styled(sid, (s) => s.list) ?? false) ? '•' : null,
         pageBreakBefore: breakBefore,
       );
     }
@@ -487,7 +489,12 @@ Deck _pptx(String path) {
             final title = ph != null && (ph['type'] == 'title' || ph['type'] == 'ctrTitle');
             final spPr = sp.child('p:spPr');
             final txt = sp.child('p:txBody');
-            final ps = paras(txt, defSize: title ? 40 : (ph != null ? 22 : 18), defColor: theme['tx1']);
+            // Title slides centre their title and subtitle.
+            final centred = ph != null && (ph['type'] == 'ctrTitle' || ph['type'] == 'subTitle');
+            final ps = [
+              for (final p in paras(txt, defSize: title ? 40 : (ph != null ? 22 : 18), defColor: theme['tx1']))
+                centred && p.align == 'left' ? Para(runs: p.runs, align: 'center', after: p.after, bullet: p.bullet, indent: p.indent) : p,
+            ];
             final anchor = txt?.child('a:bodyPr')?['anchor'] ?? (title ? 'ctr' : 't');
             final geom = spPr?.child('a:prstGeom')?['prst'];
             shapes.add(Shape(
