@@ -181,8 +181,8 @@ class StylePreview extends StatelessWidget {
       final accent = Color(spec.accents.first);
       final fg = spec.onSurface;
       Widget rowLine(double wd, {bool sel = false}) => Container(
-            height: 10,
-            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            height: 9,
+            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
             padding: const EdgeInsets.symmetric(horizontal: 3),
             decoration: BoxDecoration(color: sel ? accent.withValues(alpha: 0.2) : null, borderRadius: BorderRadius.circular(4)),
             child: Row(children: [
@@ -201,8 +201,8 @@ class StylePreview extends StatelessWidget {
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 3),
-                  child: Container(width: 30, height: 5, decoration: BoxDecoration(color: fg.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(2))),
+                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
+                  child: Container(width: 30, height: 4, decoration: BoxDecoration(color: fg.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(2))),
                 ),
                 ...rows,
               ]),

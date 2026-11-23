@@ -124,6 +124,7 @@ Future<CommanderPageState> commander(WidgetTester t, Brightness b, {String left 
   await t.runAsync(() => Future.wait(s.panels.map((p) => p.load())));
   s.panels[0].selectNames(select);
   await t.pump(const Duration(milliseconds: 400));
+  await t.pump(const Duration(milliseconds: 400));
   return s;
 }
 

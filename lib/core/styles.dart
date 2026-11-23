@@ -69,7 +69,7 @@ const styleSpecs = <UiStyle, StyleSpec>{
     cardActive: Color(0x14FFFFFF),
     cardIdle: Color(0x0BFFFFFF),
     idleBorder: Color(0x14FFFFFF),
-    bar: Color(0xC21C1F2C),
+    bar: Color(0xEB1C1F2C),
     glow: true,
   ),
   UiStyle.porcelain: StyleSpec(
@@ -82,7 +82,7 @@ const styleSpecs = <UiStyle, StyleSpec>{
     cardActive: Color(0xFFFFFFFF),
     cardIdle: Color(0xFFF8F9FA),
     idleBorder: Color(0xFFE3E5EA),
-    bar: Color(0xE6FFFFFF),
+    bar: Color(0xF5FFFFFF),
     shadow: true,
   ),
   UiStyle.oled: StyleSpec(
@@ -95,7 +95,7 @@ const styleSpecs = <UiStyle, StyleSpec>{
     cardActive: Color(0xFF0D0F10),
     cardIdle: Color(0xFF0A0B0C),
     idleBorder: Color(0x14FFFFFF),
-    bar: Color(0xCC181C1E),
+    bar: Color(0xEB181C1E),
   ),
 };
 
