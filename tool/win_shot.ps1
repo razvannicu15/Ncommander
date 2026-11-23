@@ -37,6 +37,15 @@ New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "zipsrc\docs") | 
 Copy-Item (Join-Path $home0 "img1.png") (Join-Path $env:TEMP "zipsrc\photo.png")
 Compress-Archive -Path (Join-Path $env:TEMP "zipsrc\*") -DestinationPath (Join-Path $home0 "demo.zip") -Force
 
+# A PDF to preview, printed by Edge from a small page.
+$html = Join-Path $env:TEMP "raport.html"
+"<html><body style='font-family:Segoe UI;padding:40px'><h1>Raport lunar</h1><p>Ncommander quick view test.</p><ul><li>Venituri</li><li>Cheltuieli</li></ul></body></html>" | Out-File -Encoding utf8 $html
+$edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+if (Test-Path $edge) {
+  & $edge --headless --disable-gpu --no-pdf-header-footer "--print-to-pdf=$(Join-Path $home0 'raport.pdf')" $html | Out-Null
+  Start-Sleep -Seconds 5
+}
+
 $p = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds 10
 $p.Refresh()
@@ -78,7 +87,12 @@ Start-Sleep -Seconds 2
 Shot "win_08_ftp"
 $sh.SendKeys("{ESC}")
 Start-Sleep -Seconds 1
-$sh.SendKeys("{END}{UP}{UP}{UP}{UP}{UP}{ENTER}")
+$sh.SendKeys("{END}{F3}")
+Start-Sleep -Seconds 4
+Shot "win_10_pdf"
+$sh.SendKeys("{ESC}")
+Start-Sleep -Seconds 2
+$sh.SendKeys("{END}{UP}{UP}{UP}{UP}{UP}{UP}{ENTER}")
 Start-Sleep -Seconds 3
 Shot "win_09_zip"
 $sh.SendKeys("{BACKSPACE}")
