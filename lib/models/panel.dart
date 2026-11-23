@@ -46,6 +46,9 @@ class Volumes extends ValueNotifier<List<Volume>> {
 
 final volumes = Volumes();
 
+/// True once a physical keyboard is used (from the start on Windows): shows the row cursor.
+final keyboardUsed = ValueNotifier<bool>(Platform.isWindows);
+
 Conn? connOf(String path) {
   if (!isRemote(path)) return null;
   final root = rootOf(path);
@@ -80,6 +83,34 @@ class Panel extends ChangeNotifier {
   int focusTick = 0;
 
   int total = 0, free = 0;
+
+  /// Keyboard cursor (name of the row), like Total Commander's.
+  String? cursor;
+  int cursorTick = 0;
+
+  Entry? get cursorEntry {
+    if (cursor == null) return entries.isEmpty ? null : entries.first;
+    return entries.where((e) => e.name == cursor).firstOrNull ?? (entries.isEmpty ? null : entries.first);
+  }
+
+  void setCursor(String? name, {bool notify = true}) {
+    cursor = name;
+    cursorTick++;
+    if (notify) notifyListeners();
+  }
+
+  /// Moves the cursor by [delta] rows (clamped); [select] toggles the row it leaves (Shift+arrows).
+  void moveCursor(int delta, {bool select = false}) {
+    if (entries.isEmpty) return;
+    final at = entries.indexWhere((e) => e.name == cursor);
+    final from = at < 0 ? 0 : at;
+    if (select) {
+      final e = entries[from];
+      if (!selected.remove(e.path)) selected.add(e.path);
+    }
+    final to = at < 0 && delta > 0 ? 0 : (from + delta).clamp(0, entries.length - 1);
+    setCursor(entries[to].name);
+  }
 
   StreamSubscription<FileSystemEvent>? _watch;
   Timer? _debounce;
@@ -216,6 +247,7 @@ class Panel extends ChangeNotifier {
     filtering = false;
     focusName = focus;
     focusTick++;
+    cursor = focus;
     _changed();
     await load();
   }
@@ -228,6 +260,7 @@ class Panel extends ChangeNotifier {
   /// Scrolls to and flashes [name] (after create / rename).
   void focus(String name) {
     focusName = name;
+    cursor = name;
     focusTick++;
     notifyListeners();
   }

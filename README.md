@@ -56,4 +56,13 @@ La prima pornire aplicația cere **acces la toate fișierele** (necesar pentru u
 
 `Ncommander-windows.zip` din release-ul „latest” (sau opțiunea **[6]** din `Ncommander.bat`, care îl instalează în `D:\Apps\Ncommander\win` și pune o scurtătură pe Desktop).
 Discuri locale și de rețea, FTP, aceleași teme. Google Drive și OneDrive apar deja ca foldere pe Windows, așa că lipsesc din „Conexiune nouă”.
-Taste Total Commander: F5 copiere, F6 mutare, Shift+F6/F2 redenumire, F7 nou, F8/Delete ștergere, Tab panoul celălalt, Backspace folderul părinte, Ctrl+A tot, Ctrl+F filtru, Ctrl+T/W tab nou/închide, Ctrl+R reîmprospătare. Click dreapta = selectare.
+Taste Total Commander (merg și cu tastatură pe telefon); comenzile lucrează pe selecție sau, fără selecție, pe rândul cu cursorul:
+- săgeți, PgUp/PgDn, Home/End mută cursorul; Shift+săgeți selectează; Insert selectează și coboară; Space selectează
+- Enter / F3 deschide, F4 editează, Backspace / Ctrl+PgUp folderul părinte, Ctrl+PgDn intră în folder
+- F5 copiere, F6 mutare, Shift+F6 / F2 redenumire, F7 nou, F8 / Delete ștergere
+- Alt+F7 căutare, Alt+F5 arhivează, Alt+F9 dezarhivează, Alt+Enter proprietăți
+- Tab panoul celălalt, Alt+F1 / Alt+F2 locații stânga / dreapta, Ctrl+D locații, Ctrl+U inversează panourile
+- Ctrl+←/→ deschide folderul de sub cursor în panoul stâng / drept
+- Num+ selectează după mască, Num− deselectează, Num* inversează, Ctrl+A tot, Esc anulează selecția
+- Ctrl+F filtru, Ctrl+H fișiere ascunse, Ctrl+T / Ctrl+W tab nou / închide, Ctrl+Tab tab următor, Ctrl+R reîmprospătare
+- click dreapta = selectare

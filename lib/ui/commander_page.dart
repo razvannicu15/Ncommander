@@ -656,31 +656,140 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
 
   // ---------------------------------------------------------------- back
 
-  /// Total Commander keys for keyboards and Windows.
+  late final Map<ShortcutActivator, VoidCallback> _keymap = _keys();
+
+  /// Keys that a text field (filter, dialogs) doesn't use reach here.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final f = FocusManager.instance.primaryFocus?.context;
+    if (f != null && (f.widget is EditableText || f.findAncestorWidgetOfExactType<EditableText>() != null)) {
+      return KeyEventResult.ignored;
+    }
+    for (final MapEntry(:key, :value) in _keymap.entries) {
+      if (key.accepts(event, HardwareKeyboard.instance)) {
+        value();
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Total Commander keys for keyboards and Windows. Like TC, a command works
+  /// on the selection, or on the row under the cursor when nothing is selected.
   Map<ShortcutActivator, VoidCallback> _keys() {
-    bool any() => cur.selected.isNotEmpty;
+    VoidCallback k(void Function() f) => () {
+          if (!keyboardUsed.value) {
+            keyboardUsed.value = true;
+            cur.setCursor(cur.cursorEntry?.name);
+          }
+          f();
+        };
+    bool target() {
+      if (cur.selected.isNotEmpty) return true;
+      final e = cur.cursorEntry;
+      if (e == null) return false;
+      cur.toggle(e);
+      return true;
+    }
+
+    Entry? at() => cur.cursorEntry;
+    void openAt() {
+      final e = at();
+      if (e != null) open(e);
+    }
+
+    const sa = SingleActivator.new;
     return {
-      const SingleActivator(LogicalKeyboardKey.f5): () => any() ? copyMove(false) : null,
-      const SingleActivator(LogicalKeyboardKey.f6): () => any() ? copyMove(true) : null,
-      const SingleActivator(LogicalKeyboardKey.f6, shift: true): () => cur.selected.length == 1 ? rename() : null,
-      const SingleActivator(LogicalKeyboardKey.f2): () => cur.selected.length == 1 ? rename() : null,
-      const SingleActivator(LogicalKeyboardKey.f7): createNew,
-      const SingleActivator(LogicalKeyboardKey.f8): () => any() ? delete() : null,
-      const SingleActivator(LogicalKeyboardKey.delete): () => any() ? delete() : null,
-      const SingleActivator(LogicalKeyboardKey.tab): () => activatePanel(1 - active),
-      const SingleActivator(LogicalKeyboardKey.backspace): () => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null,
-      const SingleActivator(LogicalKeyboardKey.escape): () {
+      // Moving around
+      sa(LogicalKeyboardKey.arrowDown): k(() => cur.moveCursor(1)),
+      sa(LogicalKeyboardKey.arrowUp): k(() => cur.moveCursor(-1)),
+      sa(LogicalKeyboardKey.arrowDown, shift: true): k(() => cur.moveCursor(1, select: true)),
+      sa(LogicalKeyboardKey.arrowUp, shift: true): k(() => cur.moveCursor(-1, select: true)),
+      sa(LogicalKeyboardKey.pageDown): k(() => cur.moveCursor(12)),
+      sa(LogicalKeyboardKey.pageUp): k(() => cur.moveCursor(-12)),
+      sa(LogicalKeyboardKey.home): k(() => cur.moveCursor(-1 << 20)),
+      sa(LogicalKeyboardKey.end): k(() => cur.moveCursor(1 << 20)),
+      sa(LogicalKeyboardKey.enter): k(openAt),
+      sa(LogicalKeyboardKey.numpadEnter): k(openAt),
+      sa(LogicalKeyboardKey.backspace): k(() => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null),
+      sa(LogicalKeyboardKey.pageUp, control: true): k(() => !cur.atRoot && !cur.atVolumeRoot ? cur.up() : null),
+      sa(LogicalKeyboardKey.pageDown, control: true): k(() => at()?.isDir == true ? openAt() : null),
+      sa(LogicalKeyboardKey.tab): k(() => activatePanel(1 - active)),
+      sa(LogicalKeyboardKey.f1, alt: true): k(() {
+        activatePanel(0);
+        _scaffold.currentState?.openDrawer();
+      }),
+      sa(LogicalKeyboardKey.f2, alt: true): k(() {
+        activatePanel(1);
+        _scaffold.currentState?.openDrawer();
+      }),
+      sa(LogicalKeyboardKey.keyD, control: true): k(() => _scaffold.currentState?.openDrawer()),
+      // Selecting
+      sa(LogicalKeyboardKey.insert): k(() {
+        final e = at();
+        if (e == null) return;
+        cur.toggle(e);
+        cur.moveCursor(1);
+      }),
+      sa(LogicalKeyboardKey.space): k(() {
+        final e = at();
+        if (e != null) cur.toggle(e);
+      }),
+      sa(LogicalKeyboardKey.numpadAdd): k(() async {
+        final m = await askMask(context);
+        if (m != null) cur.selectMask(m.$1, add: m.$2);
+      }),
+      sa(LogicalKeyboardKey.numpadSubtract): k(() => cur.clearSelection()),
+      sa(LogicalKeyboardKey.numpadMultiply): k(() => cur.invert()),
+      sa(LogicalKeyboardKey.keyA, control: true): k(() => cur.selectAll()),
+      sa(LogicalKeyboardKey.escape): k(() {
         if (cur.hasSelection) {
           cur.clearSelection();
         } else if (cur.filtering) {
           cur.toggleFiltering();
         }
-      },
-      const SingleActivator(LogicalKeyboardKey.keyA, control: true): () => panelAction(cur, PanelAction.selectAll),
-      const SingleActivator(LogicalKeyboardKey.keyR, control: true): () => panelAction(cur, PanelAction.refresh),
-      const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => panelAction(cur, PanelAction.filter),
-      const SingleActivator(LogicalKeyboardKey.keyT, control: true): () => panelAction(cur, PanelAction.newTab),
-      const SingleActivator(LogicalKeyboardKey.keyW, control: true): () => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null,
+      }),
+      // Function keys
+      sa(LogicalKeyboardKey.f3): k(openAt),
+      sa(LogicalKeyboardKey.f4): k(() {
+        final e = at();
+        if (e == null || e.isDir) return;
+        if (isTextKind(e.kind) && !isRemote(e.path)) {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(path: e.path)));
+        } else {
+          Native.open(e.path, e.kind.mimeFor(e.name));
+        }
+      }),
+      sa(LogicalKeyboardKey.f5): k(() => target() ? copyMove(false) : null),
+      sa(LogicalKeyboardKey.f6): k(() => target() ? copyMove(true) : null),
+      sa(LogicalKeyboardKey.f6, shift: true): k(() => target() && cur.selected.length == 1 ? rename() : null),
+      sa(LogicalKeyboardKey.f2): k(() => target() && cur.selected.length == 1 ? rename() : null),
+      sa(LogicalKeyboardKey.f7): k(createNew),
+      sa(LogicalKeyboardKey.f7, alt: true): k(() => cur.remote ? null : _search(cur)),
+      sa(LogicalKeyboardKey.f8): k(() => target() ? delete() : null),
+      sa(LogicalKeyboardKey.delete): k(() => target() ? delete() : null),
+      sa(LogicalKeyboardKey.f5, alt: true): k(() => target() ? zip() : null),
+      sa(LogicalKeyboardKey.f9, alt: true): k(() {
+        final e = at();
+        if (e != null && e.ext == 'zip' && !isRemote(e.path)) _zipSheet(e);
+      }),
+      sa(LogicalKeyboardKey.enter, alt: true): k(() => target() ? showProperties(context, cur.selectedEntries) : null),
+      // Panels and tabs
+      sa(LogicalKeyboardKey.keyU, control: true): k(swap),
+      sa(LogicalKeyboardKey.keyR, control: true): k(() => panelAction(cur, PanelAction.refresh)),
+      sa(LogicalKeyboardKey.keyF, control: true): k(() => panelAction(cur, PanelAction.filter)),
+      sa(LogicalKeyboardKey.keyH, control: true): k(() => panelAction(cur, PanelAction.hidden)),
+      sa(LogicalKeyboardKey.keyT, control: true): k(() => panelAction(cur, PanelAction.newTab)),
+      sa(LogicalKeyboardKey.keyW, control: true): k(() => cur.tabs.length > 1 ? panelAction(cur, PanelAction.closeTab) : null),
+      sa(LogicalKeyboardKey.tab, control: true): k(() => cur.tabs.length > 1 ? cur.switchTab((cur.activeTab + 1) % cur.tabs.length) : null),
+      sa(LogicalKeyboardKey.arrowLeft, control: true): k(() {
+        final e = at();
+        if (e != null && e.isDir) panels[0].go(e.path);
+      }),
+      sa(LogicalKeyboardKey.arrowRight, control: true): k(() {
+        final e = at();
+        if (e != null && e.isDir) panels[1].go(e.path);
+      }),
     };
   }
 
@@ -760,10 +869,9 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
             }
           },
         ),
-        body: CallbackShortcuts(
-          bindings: _keys(),
-          child: Focus(
+        body: Focus(
             autofocus: true,
+            onKeyEvent: _onKey,
             child: SafeArea(
           bottom: false,
           child: Column(children: [
@@ -772,7 +880,6 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
             _bottomBar(cs),
           ]),
         ),
-          ),
         ),
       ),
     );

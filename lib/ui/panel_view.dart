@@ -119,6 +119,10 @@ class _PanelViewState extends State<PanelView> {
   void _onPanel() {
     if (!mounted) return;
     setState(() {});
+    if (_seenCursor != p.cursorTick) {
+      _seenCursor = p.cursorTick;
+      if (_showCursor) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCursor());
+    }
     if (!p.loading && _seenTick != p.focusTick) {
       _seenTick = p.focusTick;
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFocus());
@@ -155,6 +159,34 @@ class _PanelViewState extends State<PanelView> {
     setState(() => _flash = name);
     Future.delayed(const Duration(milliseconds: 900), () {
       if (mounted && _flash == name) setState(() => _flash = null);
+    });
+  }
+
+  int _seenCursor = 0;
+  final _cursorKey = GlobalKey();
+
+  /// The cursor shows on the active panel once a keyboard is in use (always on Windows).
+  bool get _showCursor => widget.active && keyboardUsed.value;
+
+  /// Keeps the cursor row on screen, scrolling as little as possible.
+  void _scrollToCursor() {
+    if (!mounted || !_scroll.hasClients) return;
+    final c = _cursorKey.currentContext;
+    if (c != null && c.mounted) {
+      Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+      Scrollable.ensureVisible(c, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+      return;
+    }
+    // Row not built yet (Page Down, End): jump near it, then settle.
+    final i = p.entries.indexWhere((e) => e.name == p.cursor);
+    if (i < 0) return;
+    final h = store.table ? rowHeight(context) : MediaQuery.textScalerOf(context).scale(68 * store.fontScale);
+    final idx = i + (_showParent ? 1 : 0);
+    final view = _scroll.position.viewportDimension;
+    _scroll.jumpTo((idx * h - view / 2).clamp(0.0, _scroll.position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c2 = _cursorKey.currentContext;
+      if (c2 != null && c2.mounted) Scrollable.ensureVisible(c2, alignment: 0.5);
     });
   }
 
@@ -573,6 +605,7 @@ class _PanelViewState extends State<PanelView> {
       child: InkWell(
         onTap: () {
           widget.onActivate();
+          p.setCursor(e.name, notify: false);
           if (selecting) {
             p.toggle(e);
           } else {
@@ -583,7 +616,11 @@ class _PanelViewState extends State<PanelView> {
         onLongPress: () => _press(e, selecting, sel),
         onSecondaryTap: () => _press(e, selecting, sel),
         child: AnimatedContainer(
+          key: e.name == p.cursor && _showCursor ? _cursorKey : null,
           duration: Duration(milliseconds: flash ? 120 : 380),
+          foregroundDecoration: e.name == p.cursor && _showCursor
+              ? BoxDecoration(border: Border.all(color: cs.primary, width: 1.5))
+              : null,
           decoration: BoxDecoration(
             color: sel
                 ? cs.primary.withValues(alpha: 0.14)
@@ -707,6 +744,7 @@ class _PanelViewState extends State<PanelView> {
       child: InkWell(
         onTap: () {
           widget.onActivate();
+          p.setCursor(e.name, notify: false);
           if (selecting) {
             p.toggle(e);
           } else {
@@ -717,7 +755,11 @@ class _PanelViewState extends State<PanelView> {
         onLongPress: () => _press(e, selecting, sel),
         onSecondaryTap: () => _press(e, selecting, sel),
         child: AnimatedContainer(
+          key: e.name == p.cursor && _showCursor ? _cursorKey : null,
           duration: Duration(milliseconds: flash ? 120 : 380),
+          foregroundDecoration: e.name == p.cursor && _showCursor
+              ? BoxDecoration(border: Border.all(color: cs.primary, width: 1.5))
+              : null,
           color: sel
               ? cs.primary.withValues(alpha: 0.13)
               : flash
