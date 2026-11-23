@@ -874,7 +874,7 @@ class CommanderPageState extends State<CommanderPage> with WidgetsBindingObserve
     final e = cur.cursorEntry;
     if (e == null || e.isDir) return;
     if (isTextKind(e.kind) && !isRemote(e.path)) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: e.path))));
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EscCloses(child: EditorPage(path: e.path, edit: true))));
     } else {
       Native.open(e.path, e.kind.mimeFor(e.name));
     }

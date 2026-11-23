@@ -2,17 +2,26 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:re_editor/re_editor.dart';
+import 'package:re_highlight/languages/all.dart';
+import 'package:re_highlight/styles/atom-one-dark.dart';
+import 'package:re_highlight/styles/atom-one-light.dart';
 
 import '../core/format.dart';
 import '../core/i18n.dart';
 import '../services/fs.dart';
 import '../services/native.dart';
+import 'viewers.dart' show codeLanguage;
 import 'widgets.dart';
 
 /// Built-in viewer / editor for text files (TC F3 / F4).
 class EditorPage extends StatefulWidget {
-  const EditorPage({super.key, required this.path});
+  const EditorPage({super.key, required this.path, this.edit = false});
   final String path;
+
+  /// Open straight in edit mode (F4).
+  final bool edit;
 
   @override
   State<EditorPage> createState() => _EditorPageState();
@@ -21,11 +30,10 @@ class EditorPage extends StatefulWidget {
 class _EditorPageState extends State<EditorPage> {
   static const _maxBytes = 2 * 1024 * 1024;
 
-  final _ctl = TextEditingController();
-  final _scrollH = ScrollController();
+  final _ctl = CodeLineEditingController();
   String _original = '';
   bool _loading = true;
-  bool _edit = false;
+  late bool _edit = widget.edit;
   bool _wrap = true;
   bool _readOnly = false;
   double _font = 13.5;
@@ -43,7 +51,6 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void dispose() {
     _ctl.dispose();
-    _scrollH.dispose();
     super.dispose();
   }
 
@@ -194,38 +201,41 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  /// Code editor: syntax colours from the extension, line numbers, folding.
   Widget _body(ColorScheme cs) {
-    final style = TextStyle(fontFamily: 'monospace', fontSize: _font, height: 1.35, color: cs.onSurface);
-    final field = TextField(
-      controller: _ctl,
-      readOnly: !_edit,
-      showCursor: _edit,
-      maxLines: null,
-      expands: _wrap,
-      keyboardType: TextInputType.multiline,
-      style: style,
-      textAlignVertical: TextAlignVertical.top,
-      decoration: const InputDecoration(
-        filled: false,
-        border: InputBorder.none,
-        contentPadding: EdgeInsets.fromLTRB(14, 10, 14, 40),
-      ),
-    );
-    if (_wrap) return field;
-    // No wrap: scroll horizontally, width set by the longest line.
-    final longest = _ctl.text.split('\n').fold<int>(0, (m, l) => l.length > m ? l.length : m);
-    return LayoutBuilder(
-      builder: (_, c) {
-        final w = (longest * _font * 0.62 + 48).clamp(c.maxWidth, 20000.0);
-        return Scrollbar(
-          controller: _scrollH,
-          child: SingleChildScrollView(
-            controller: _scrollH,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: w, height: c.maxHeight, child: SingleChildScrollView(child: field)),
-          ),
-        );
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final lang = codeLanguage(nameOf(widget.path));
+    final mode = lang == null ? null : builtinAllLanguages[lang];
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _edit && _dirty ? _save() : null,
       },
+      child: CodeEditor(
+        controller: _ctl,
+        readOnly: !_edit,
+        wordWrap: _wrap,
+        autofocus: _edit,
+        padding: const EdgeInsets.fromLTRB(6, 8, 14, 40),
+        style: CodeEditorStyle(
+          fontSize: _font,
+          fontFamily: 'monospace',
+          fontHeight: 1.35,
+          backgroundColor: dark ? const Color(0xFF1E2127) : const Color(0xFFFAFAFA),
+          textColor: dark ? const Color(0xFFABB2BF) : const Color(0xFF383A42),
+          selectionColor: cs.primary.withValues(alpha: 0.25),
+          cursorColor: cs.primary,
+          codeTheme: mode == null
+              ? null
+              : CodeHighlightTheme(
+                  languages: {lang!: CodeHighlightThemeMode(mode: mode)},
+                  theme: dark ? atomOneDarkTheme : atomOneLightTheme,
+                ),
+        ),
+        indicatorBuilder: (context, editing, chunk, notifier) => Row(children: [
+          DefaultCodeLineNumber(controller: editing, notifier: notifier),
+          DefaultCodeChunkIndicator(width: 18, controller: chunk, notifier: notifier),
+        ]),
+      ),
     );
   }
 }

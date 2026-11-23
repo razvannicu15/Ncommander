@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../core/file_types.dart';
@@ -873,6 +874,9 @@ class _PanelViewState extends State<PanelView> {
           clipBehavior: Clip.antiAlias,
           child: child,
         );
+    if (e.ext == 'svg') {
+      return Center(child: SvgPicture.file(File(e.path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => EntryIcon(e, size: 52 * dz + 10, solid: true)));
+    }
     if (e.ext == 'pdf') {
       return Center(
         child: AspectRatio(

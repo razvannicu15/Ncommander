@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:re_highlight/languages/all.dart';
 import 'package:re_highlight/re_highlight.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
@@ -50,6 +51,12 @@ const _langs = {
   'cfg': 'ini', 'conf': 'ini', 'toml': 'ini', 'properties': 'properties', 'gradle': 'groovy', 'lua': 'lua',
   'pl': 'perl', 'r': 'r', 'vb': 'vbnet', 'diff': 'diff', 'patch': 'diff', 'csv': 'plaintext', 'log': 'plaintext',
 };
+
+/// re_highlight language for a file name, if it's code.
+String? codeLanguage(String name) {
+  final l = _langs[extOf(name)];
+  return l == 'plaintext' ? null : l;
+}
 
 bool isCodeOrText(String name) => isTextKind(kindOf(name)) || _langs.containsKey(extOf(name));
 
@@ -160,7 +167,7 @@ class _CodeViewPageState extends State<CodeViewPage> {
         IconButton(
           tooltip: tr('Editează (F4)', 'Edit (F4)'),
           icon: const Icon(Icons.edit_outlined),
-          onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => EditorPage(path: widget.path))),
+          onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => EditorPage(path: widget.path, edit: true))),
         ),
       ]),
       body: body,
@@ -372,6 +379,45 @@ class _MediaViewPageState extends State<MediaViewPage> {
                 ),
               ),
           ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- svg
+
+/// F3 for SVG: the drawing itself (zoom with pinch / wheel), source on demand.
+class SvgViewPage extends StatelessWidget {
+  const SvgViewPage({super.key, required this.path});
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: _bar(context, path, extra: [
+        TextButton.icon(
+          icon: const Icon(Icons.code_rounded, size: 18),
+          label: Text(tr('Sursă', 'Source')),
+          onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => CodeViewPage(path: path))),
+        ),
+      ]),
+      body: Container(
+        color: cs.surfaceContainerLow,
+        child: InteractiveViewer(
+          maxScale: 20,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: SvgPicture.file(
+                File(path),
+                fit: BoxFit.contain,
+                placeholderBuilder: (_) => const CircularProgressIndicator(strokeWidth: 2.5),
+                errorBuilder: (_, __, ___) => Text(tr('Desenul nu poate fi afișat', 'The drawing can\'t be shown'), style: TextStyle(color: cs.onSurfaceVariant)),
+              ),
+            ),
+          ),
         ),
       ),
     );

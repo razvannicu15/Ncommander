@@ -24,6 +24,7 @@ Widget quickViewFor(String path) {
   final k = kindOf(name);
   if (k == Kind.video || k == Kind.audio) return MediaViewPage(path: path);
   if (fontExts.contains(e)) return FontViewPage(path: path);
+  if (e == 'svg') return SvgViewPage(path: path);
   if (e != 'pdf' && !officeExts.contains(e) && isCodeOrText(name)) return CodeViewPage(path: path);
   return QuickViewPage(path: path);
 }
